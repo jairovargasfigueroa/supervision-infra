@@ -102,17 +102,19 @@ prueba('Keycloak: responde el realm master', async () => {
 });
 
 // --- Realm supervision (1.4) ---
+// docs/datos-prueba.md, sección 3 (011): el id es el sub del token. Orden = sufijo del id.
 const USUARIOS = {
-  admin1: ['admin'],
-  gerente1: ['gerente'],
-  residente1: ['residente'],
-  residente2: ['residente'],
-  maestro1: ['maestro'],
-  almacenero1: ['almacenero'],
-  cliente1: ['cliente'],
-  cliente2: ['cliente'],
-  demo1: ['residente', 'cliente'],
+  admin1: ['admin', 'Carla', 'Méndez Rivero', 'admin1@constructora-andina.test'],
+  gerente1: ['gerente', 'Jorge', 'Antelo Suárez', 'gerente1@constructora-andina.test'],
+  residente1: ['residente', 'Daniela', 'Roca Justiniano', 'residente1@constructora-andina.test'],
+  residente2: ['residente', 'Marcelo', 'Vaca Saucedo', 'residente2@constructora-andina.test'],
+  maestro1: ['maestro', 'Freddy', 'Choque Mamani', 'maestro1@constructora-andina.test'],
+  almacenero1: ['almacenero', 'Rosa', 'Flores Arteaga', 'almacenero1@constructora-andina.test'],
+  cliente1: ['cliente', 'Roberto', 'Justiniano Paz', 'cliente1@correo.test'],
+  cliente2: ['cliente', 'Patricia', 'Saucedo Ribera', 'cliente2@correo.test'],
+  demo1: ['residente,cliente', 'Lucía', 'Paz Antelo', 'demo1@constructora-andina.test'],
 };
+const idUsuario = (indice) => `a0000000-0000-4000-8000-0000000000${String(indice + 1).padStart(2, '0')}`;
 const ROLES = ['admin', 'residente', 'gerente', 'maestro', 'almacenero', 'cliente'];
 
 let tokenAdmin;
@@ -163,16 +165,24 @@ prueba('Realm: clientes públicos erp, portal y app-obra con PKCE S256 y sin dir
   }
 });
 
-prueba('Realm: los 9 usuarios de prueba con su id fijo y sus roles', async () => {
-  for (const [indice, [usuario, roles]] of Object.entries(USUARIOS).entries()) {
-    const id = `a0000000-0000-4000-8000-0000000000${String(indice + 1).padStart(2, '0')}`;
+prueba('Realm: los 9 usuarios de prueba con su id fijo, nombre, apellido, correo y roles', async () => {
+  for (const [indice, [usuario, [roles, nombre, apellido, correo]]] of Object.entries(USUARIOS).entries()) {
+    const id = idUsuario(indice);
     const datos = await adminKeycloak(`/users/${id}`);
     afirmar(datos.username === usuario, `${id} es ${datos.username}, se esperaba ${usuario}`);
-    afirmar(datos.firstName && datos.lastName && datos.emailVerified, `${usuario}: nombre o correo`);
+    afirmar(datos.firstName === nombre && datos.lastName === apellido, `${usuario}: ${datos.firstName} ${datos.lastName}`);
+    afirmar(datos.email === correo && datos.emailVerified, `${usuario}: correo ${datos.email}`);
     const asignados = (await adminKeycloak(`/users/${id}/role-mappings/realm`)).map((r) => r.name);
     for (const rol of ROLES) {
-      afirmar(asignados.includes(rol) === roles.includes(rol), `${usuario}: rol ${rol}`);
+      afirmar(asignados.includes(rol) === roles.split(',').includes(rol), `${usuario}: rol ${rol}`);
     }
+  }
+});
+
+prueba('Realm: el sub del token de cada usuario de prueba es su id fijo', async () => {
+  for (const [indice, usuario] of Object.keys(USUARIOS).entries()) {
+    const { sub } = leerToken(await obtenerTokenUsuario(usuario));
+    afirmar(sub === idUsuario(indice), `${usuario}: sub ${sub}, se esperaba ${idUsuario(indice)}`);
   }
 });
 
