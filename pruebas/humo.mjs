@@ -176,7 +176,7 @@ prueba('Realm: los 9 usuarios de prueba con su id fijo y sus roles', async () =>
   }
 });
 
-prueba('Realm: el cliente gateway obtiene token con audiencia plataforma-api y puede leer usuarios', async () => {
+prueba('Realm: el cliente gateway obtiene token con audiencia plataforma-api y lista usuarios por rol', async () => {
   const respuesta = await fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -195,6 +195,13 @@ prueba('Realm: el cliente gateway obtiene token con audiencia plataforma-api y p
     headers: { authorization: `Bearer ${access_token}` },
   });
   afirmar(usuario.ok, `leer residente1 con el token del gateway: ${usuario.status}`);
+  // Lo que usa la 002 para los formularios de asignación
+  const residentes = await fetch(`${KEYCLOAK}/admin/realms/supervision/roles/residente/users`, {
+    headers: { authorization: `Bearer ${access_token}` },
+  });
+  afirmar(residentes.ok, `listar residentes con el token del gateway: ${residentes.status}`);
+  const nombres = (await residentes.json()).map((u) => u.username).sort();
+  afirmar(nombres.join() === 'demo1,residente1,residente2', `residentes: ${nombres}`);
 });
 
 prueba('Realm: demo1 inicia sesión en el ERP con PKCE y el token trae sub, audiencia, azp y roles', async () => {
