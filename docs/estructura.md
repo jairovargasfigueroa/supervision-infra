@@ -23,4 +23,4 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 - Imágenes con versión exacta; nunca `latest`.
 - Ningún secreto en el repo (excepto los fijados **solo para desarrollo** por la especificación: contraseña de los usuarios de prueba y secreto del cliente `gateway`).
 - Archivos montados en contenedores con fin de línea LF (`.gitattributes`).
-- Keycloak usa su propia base H2 dentro del contenedor: `reiniciar-datos` la borra y el realm se vuelve a importar.
+- Keycloak usa su propia base H2 dentro del contenedor, sin volumen: `bajar` y `reiniciar-datos` la borran y al levantar el realm se vuelve a importar del JSON (lo cambiado a mano en el panel se pierde).
