@@ -22,6 +22,7 @@ cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
 ./scripts/mongo-local-replica.ps1 # una vez, como administrador: MongoDB instalado en Windows como replica set rs0
+./scripts/celular.ps1             # adb reverse para probar la app en el celular (8080, 8081, 8082 y Metro 8090)
 node pruebas/humo.mjs             # comprueba realm, colas y enlaces contra lo que está corriendo
 docker compose config -q          # valida el docker-compose.yml
 ```
@@ -43,7 +44,7 @@ rabbitmq/
 keycloak/
   realm-supervision.json  realm importado al iniciar (roles, clientes, usuarios de prueba)
   temas/supervision/      tema de la pantalla de inicio de sesión (extiende keycloak.v2)
-scripts/                  levantar, estado, bajar, reiniciar-datos y mongo-local-replica (.ps1 y .sh)
+scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica y celular (.ps1 y .sh)
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 docs/                     estructura, contratos y tareas por funcionalidad
 ```
