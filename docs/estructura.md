@@ -16,6 +16,11 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | `keycloak/realm-supervision.json` | Realm `supervision` escrito a mano (no es una exportación completa): ajustes del realm, roles, clientes, usuarios de prueba | Cambiar aquí y reimportar con `scripts/reiniciar-datos.*` |
 | `keycloak/temas/supervision/login/` | Tema de inicio de sesión: `theme.properties` (extiende `keycloak.v2`), CSS y logo | — |
 | `scripts/` | Un `.ps1` y un `.sh` por acción, con el mismo comportamiento | Script nuevo → en los dos lenguajes y en el `CLAUDE.md` |
+| `semilla/semilla.ps1` · `.sh` | Carga los datos de prueba (011): guardas, piezas que responden, D en `SEMILLA_FECHA`, usuarios de Keycloak, Obras → Finanzas → Materiales (cada uno con su comando), fotos al bucket y resumen | Una capa que amplía la semilla agrega su paso en `comun.ps1` y `comun.sh` |
+| `semilla/recargar.ps1` · `.sh` | Vacía y vuelve a cargar (pide confirmación; `-Si` / `--si`) | Ídem |
+| `semilla/comun.ps1` · `comun.sh` | Los pasos que comparten `semilla` y `recargar`, uno por lenguaje con el mismo comportamiento | Cambiar los dos a la vez |
+| `semilla/plataforma.mjs` | Lo que se habla por HTTP o TCP (fecha D, piezas que responden, usuarios de Keycloak, colas de RabbitMQ), común a los dos lenguajes; Node 24 sin dependencias | — |
+| `semilla/fotos/` | `generar-fotos.ps1` (System.Drawing) y las 10 fotos generadas en `{obraId}/{fotoId}.jpg` (sección 10 de `docs/datos-prueba.md`) | Foto nueva → en el script, se vuelve a correr y se sube la imagen |
 | `pruebas/humo.mjs` | Pruebas de humo con Node 24 (sin dependencias) contra el entorno levantado | Se amplía con cada pieza nueva |
 | `pruebas/saga.mjs` | Prueba de punta a punta de la saga «aprobar planilla» (008) contra los servicios corriendo; crea una obra y aprueba su planilla | Se ejecuta a mano (README) |
 | `pruebas/token-usuario.mjs` | Token de un usuario de prueba con el flujo real del navegador (código + PKCE) | Lo usan las pruebas de punta a punta |
