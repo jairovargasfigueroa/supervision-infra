@@ -80,6 +80,9 @@ services:
   mongo:
     image: mongo:8.0
     profiles: ["bases"]
+    hostname: mongo
+    # Replica set de un nodo: lo necesitan las transacciones del outbox de Materiales
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
@@ -90,6 +93,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  # Ejecuta rs.initiate() una vez que MongoDB responde y termina.
+  mongo-init:
+    image: mongo:8.0
+    profiles: ["bases"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./mongo/iniciar-replica.js:/iniciar-replica.js:ro
+    command: ["mongosh", "--quiet", "mongodb://mongo:27017/?directConnection=true", "/iniciar-replica.js"]
+    restart: "no"
 
 volumes:
   datos-rabbitmq:
