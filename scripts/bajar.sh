@@ -2,4 +2,4 @@
 # Detiene el entorno sin borrar los datos (los volúmenes se conservan).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-docker compose --profile '*' down
+docker compose --profile '*' down --remove-orphans

@@ -9,7 +9,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ## Stack
 
 - Docker Compose (Docker Desktop con WSL 2)
-- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `curlimages/curl:8.17.0` (solo para crear los usuarios de RabbitMQ al iniciar)
+- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar)
 - Scripts en PowerShell (`.ps1`, Windows) y Bash (`.sh`, Linux y macOS) que hacen lo mismo
 - Pruebas de humo con Node 24 (`node pruebas/humo.mjs`, sin dependencias)
 
@@ -38,9 +38,8 @@ docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nom
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
 rabbitmq/
-  rabbitmq.conf           carga las definiciones al iniciar
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
-  crear-usuarios.sh       usuarios por servicio desde .env, por la API del panel
+  iniciar.sh              importa las definiciones y crea los usuarios por servicio desde .env (API del panel)
 keycloak/
   realm-supervision.json  realm importado al iniciar (roles, clientes, usuarios de prueba)
   temas/supervision/      tema de la pantalla de inicio de sesión (extiende keycloak.v2)

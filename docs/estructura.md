@@ -11,7 +11,7 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | `postgres/init.sql` | Crea las bases de cada servicio en el contenedor (solo corre con el volumen vacío) | Base nueva → aquí y en `docs/convenciones.md` |
 | `mongo/iniciar-replica.js` | `rs.initiate()` del *replica set* `rs0`; lo ejecuta el servicio `mongo-init` | — |
 | `rabbitmq/definiciones.json` | Vhost `/`, exchange `plataforma`, colas durables y enlaces. **Sin usuarios** (sus contraseñas vienen de `.env`) | Enlace nuevo → aquí, en `docs/contratos.md` y en `pruebas/humo.mjs` |
-| `rabbitmq/crear-usuarios.sh` | Crea (o actualiza) un usuario por servicio con la API del panel; lo ejecuta `rabbitmq-usuarios` | Servicio nuevo → su usuario aquí y su contraseña en `.env.example` |
+| `rabbitmq/iniciar.sh` | Importa `definiciones.json` y crea (o actualiza) un usuario por servicio con la API del panel; lo ejecuta `rabbitmq-init` al levantar | Servicio nuevo → su usuario aquí y su contraseña en `.env.example` |
 | `keycloak/realm-supervision.json` | Realm `supervision` escrito a mano (no es una exportación completa): ajustes del realm, roles, clientes, usuarios de prueba | Cambiar aquí y reimportar con `scripts/reiniciar-datos.*` |
 | `keycloak/temas/supervision/login/` | Tema de inicio de sesión: `theme.properties` (extiende `keycloak.v2`), CSS y logo | — |
 | `scripts/` | Un `.ps1` y un `.sh` por acción, con el mismo comportamiento | Script nuevo → en los dos lenguajes y en el `CLAUDE.md` |

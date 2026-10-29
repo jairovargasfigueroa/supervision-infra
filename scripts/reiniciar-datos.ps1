@@ -6,6 +6,6 @@ if (-not $Si) {
     $respuesta = Read-Host 'Esto borra los datos de RabbitMQ, Keycloak y de las bases en contenedor. ¿Continuar? (s/N)'
     if ($respuesta -ne 's' -and $respuesta -ne 'S') { Write-Host 'Cancelado.'; exit 0 }
 }
-docker compose --profile '*' down --volumes
+docker compose --profile '*' down --volumes --remove-orphans
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & (Join-Path $PSScriptRoot 'levantar.ps1') -Perfil $Perfil

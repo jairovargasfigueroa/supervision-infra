@@ -21,8 +21,8 @@ services:
       retries: 12
       start_period: 20s
 
-  # Crea un usuario por servicio con las contraseñas de .env (las definiciones no llevan contraseñas) y termina.
-  rabbitmq-usuarios:
+  # Importa las definiciones (exchange, colas y enlaces) y crea un usuario por servicio con las contraseñas de .env; termina.
+  rabbitmq-init:
     image: curlimages/curl:8.17.0
     depends_on:
       rabbitmq:
@@ -37,8 +37,9 @@ services:
       RABBITMQ_IA_CLAVE: ${RABBITMQ_IA_CLAVE:?falta RABBITMQ_IA_CLAVE en .env}
       RABBITMQ_NOTIFICACIONES_CLAVE: ${RABBITMQ_NOTIFICACIONES_CLAVE:?falta RABBITMQ_NOTIFICACIONES_CLAVE en .env}
     volumes:
-      - ./rabbitmq/crear-usuarios.sh:/crear-usuarios.sh:ro
-    entrypoint: ["sh", "/crear-usuarios.sh"]
+      - ./rabbitmq/iniciar.sh:/iniciar.sh:ro
+      - ./rabbitmq/definiciones.json:/definiciones.json:ro
+    entrypoint: ["sh", "/iniciar.sh"]
     restart: "no"
 
   # Base H2 dentro del contenedor (sin volumen): al recrearlo (bajar y levantar) el realm se vuelve a importar.
@@ -75,9 +76,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USUARIO:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
     volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - datos-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d obras_db"]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Levanta el entorno y espera a que todo esté sano. Uso: ./scripts/levantar.sh [--perfil bases] [--perfil otro]
-# No usa "up --wait" porque toma como fallo a los contenedores que corren una vez y terminan (rabbitmq-usuarios, mongo-init).
+# No usa "up --wait" porque toma como fallo a los contenedores que corren una vez y terminan (rabbitmq-init, mongo-init).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || { echo "Falta .env: copia .env.example a .env y completa las contraseñas." >&2; exit 1; }
