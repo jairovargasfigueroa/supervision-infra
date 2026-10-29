@@ -114,6 +114,23 @@ services:
     command: ["mongosh", "--quiet", "mongodb://mongo:27017/?directConnection=true", "/iniciar-replica.js"]
     restart: "no"
 
+  # AWS CLI para subir y borrar las fotos de los datos de prueba (011) en el bucket S3 de desarrollo.
+  # Herramienta de una sola vez: se usa con "docker compose --profile herramientas run --rm s3-cli s3 ...";
+  # los scripts de semilla/ rechazan cualquier bucket que no empiece con supervision-dev-.
+  s3-cli:
+    image: amazon/aws-cli:2.38.0
+    profiles: ["herramientas"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-sa-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+    volumes:
+      - ./semilla/fotos:/semilla/fotos:ro
+    # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--version"]
+    restart: "no"
+
 volumes:
   datos-rabbitmq:
   datos-postgres:

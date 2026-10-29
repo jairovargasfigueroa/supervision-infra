@@ -8,7 +8,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 - [x] Usuarios del realm con `id`, nombre, apellido y correo fijos de la sección 3, incluido `demo1` (roles `residente` y `cliente`); exportar el JSON y comprobar que el `sub` del token de cada usuario es su `id`
 - [x] `semilla/fotos/generar-fotos.ps1` (System.Drawing) y las 10 imágenes generadas en `semilla/fotos/{obraId}/{fotoId}.jpg`
-- [ ] Servicio `s3-cli` (`amazon/aws-cli:2.38.0`) en Docker Compose con perfil `herramientas`, con las credenciales del usuario IAM de desarrollo y el bucket de `S3_BUCKET` (debe empezar con `supervision-dev-`), y la carpeta de fotos montada de solo lectura
+- [x] Servicio `s3-cli` (`amazon/aws-cli:2.38.0`) en Docker Compose con perfil `herramientas`, con las credenciales del usuario IAM de desarrollo y el bucket de `S3_BUCKET` (debe empezar con `supervision-dev-`), y la carpeta de fotos montada de solo lectura
 - [ ] `semilla/semilla.ps1` y `semilla/semilla.sh`: guardas (`SEMILLA_PERMITIDA=si`), comprobación de servicios, D única en `SEMILLA_FECHA`, verificación de usuarios de Keycloak, Obras → Finanzas → Materiales → fotos, resumen; variables nuevas en `.env.example`
 - [ ] `semilla/recargar.ps1` y `semilla/recargar.sh`: confirmación (`-Si` / `--si`), vaciado de cada servicio con su comando, de las colas de la plataforma y del bucket, reimportación de usuarios si sus `id` no coinciden, y carga
 - [ ] Prueba documentada: `semilla` dos veces (mismos conteos), revisión de los criterios de `requisitos.md`, aprobación de la planilla 3 de la obra 1 en el portal y `recargar`

@@ -7,7 +7,8 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | Ruta | Qué contiene | Cómo se cambia |
 |---|---|---|
 | `docker-compose.yml` | Un servicio por pieza, con imagen de versión fija, `healthcheck`, volumen con nombre (`datos-*`) y perfil cuando es opcional | Servicio nuevo → fila en `docs/entorno-local.md` y en `scripts/estado.*` |
-| `.env.example` | Todas las variables con su valor de desarrollo; las contraseñas vacías | Variable nueva → aquí y en el `docker-compose.yml` |
+| `docker-compose.yml` → `s3-cli` | AWS CLI (`amazon/aws-cli:2.38.0`, perfil `herramientas`) con `semilla/fotos` de solo lectura y las claves del usuario IAM de desarrollo de `.env`. Es una herramienta de una sola vez (sin *healthcheck*): se usa con `docker compose --profile herramientas run --rm s3-cli s3 …` | Solo la llaman los scripts de `semilla/` |
+| `.env.example` | Todas las variables con su valor de desarrollo; las contraseñas y claves vacías | Variable nueva → aquí y en el `docker-compose.yml` |
 | `postgres/init.sql` | Crea las bases de cada servicio en el contenedor (solo corre con el volumen vacío) | Base nueva → aquí y en `docs/convenciones.md` |
 | `mongo/iniciar-replica.js` | `rs.initiate()` del *replica set* `rs0`; lo ejecuta el servicio `mongo-init` | — |
 | `rabbitmq/definiciones.json` | Vhost `/`, exchange `plataforma`, colas durables y enlaces. **Sin usuarios** (sus contraseñas vienen de `.env`) | Enlace nuevo → aquí, en `docs/contratos.md` y en `pruebas/humo.mjs` |
