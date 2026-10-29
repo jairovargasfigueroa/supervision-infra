@@ -1,0 +1,9 @@
+# Secretos de desarrollo: se copian de .env.example y nunca se suben
+.env
+secretos/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
