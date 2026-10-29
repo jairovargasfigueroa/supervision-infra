@@ -5,6 +5,7 @@
 //   comprobar [--rabbitmq] comprueba que PostgreSQL, MongoDB y Keycloak (y el panel de RabbitMQ) responden
 //   usuarios               comprueba que los 9 usuarios de prueba existen con su id fijo (sale con 3 si no)
 //   esperar-keycloak       espera hasta 3 minutos a que el realm supervision responda
+//   servicios              avisa si Obras, Materiales o Finanzas están corriendo (8081 a 8083)
 //   colas                  vacía las colas de la plataforma que existan (API del panel de RabbitMQ)
 import { readFileSync } from 'node:fs';
 import { connect } from 'node:net';
@@ -158,6 +159,17 @@ const ordenes = {
     salir(1, 'Keycloak no respondió en 3 minutos: revisa "docker compose logs keycloak".');
   },
 
+  async servicios() {
+    // recargar recomienda detener los servicios: sus consumidores y tareas podrían escribir mientras se vacía
+    const corriendo = [];
+    for (const [nombre, puerto] of [['Obras', 8081], ['Materiales', 8082], ['Finanzas', 8083]]) {
+      if (await puertoAbierto(`localhost:${puerto}`)) corriendo.push(`${nombre} (${puerto})`);
+    }
+    if (corriendo.length) {
+      console.log(`AVISO: están corriendo ${corriendo.join(', ')}. Se recomienda detenerlos (y sus consumidores) antes de recargar.`);
+    }
+  },
+
   async colas() {
     const cabeceras = { authorization: autorizacionRabbit() };
     let respuesta;
@@ -174,11 +186,11 @@ const ordenes = {
         headers: cabeceras,
       });
       if (!vaciar.ok) salir(1, `No se pudo vaciar la cola ${cola.name}: ${vaciar.status}`);
-      console.log(`ok       cola ${cola.name} vaciada (${cola.messages ?? 0} mensajes)`);
+      console.log(`ok       cola ${cola.name} vaciada (tenía ${cola.messages ?? 0} mensajes según el panel)`);
     }
   },
 };
 
 const [orden, ...resto] = process.argv.slice(2);
-if (!ordenes[orden]) salir(1, `Orden desconocida: ${orden ?? '(ninguna)'}. Usa fecha, comprobar, usuarios, esperar-keycloak o colas.`);
+if (!ordenes[orden]) salir(1, `Orden desconocida: ${orden ?? '(ninguna)'}. Usa fecha, comprobar, usuarios, esperar-keycloak, servicios o colas.`);
 await ordenes[orden](...resto);

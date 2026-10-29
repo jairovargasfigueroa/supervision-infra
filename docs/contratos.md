@@ -67,3 +67,21 @@ Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos
 | `plataforma.fallidos` | ninguno: los servicios publican ahí directo (exchange por defecto, clave `plataforma.fallidos`) los mensajes que fallan 3 veces |
 
 Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan.
+
+## Datos de prueba (011)
+
+`semilla/semilla.*` y `semilla/recargar.*` orquestan la carga; cada servicio carga **solo su base** con su propio comando, que infra llama desde la carpeta del proyecto (`OBRAS_DIR`, `FINANZAS_DIR`, `MATERIALES_DIR` de `.env`, por defecto las carpetas hermanas). Lo que infra espera de cada uno:
+
+| Servicio | Cargar | Vaciar (solo `recargar`) |
+|---|---|---|
+| Obras | `mvnw spring-boot:run -Dspring-boot.run.profiles=semilla` | el mismo comando con `-Dspring-boot.run.arguments=--semilla.modo=recargar` (vacía y carga en una transacción) |
+| Finanzas | `php artisan db:seed --class=DatosPruebaSeeder --force` (PHP 8.3 o más; en Windows el de Herd) | `php artisan datos-prueba:vaciar` |
+| Materiales | `npm run semilla` (Node 24) | `npm run semilla:vaciar` |
+
+- **Fecha D:** infra la calcula una vez (hoy en `America/La_Paz`, o la `SEMILLA_FECHA` que ya venga definida) y la pasa a los tres en la variable de entorno `SEMILLA_FECHA` (`AAAA-MM-DD`).
+- **Salida:** código 0 si cargó bien; distinto de 0 si falla o si su guarda se niega (producción o base no local). Infra se detiene en el primer servicio que falla.
+- **Resumen:** infra copia a su resumen final las líneas de la salida de cada comando que contienen la palabra «resumen» (sin distinguir mayúsculas), así que cada servicio imprime sus conteos en una línea con esa palabra.
+- **Orden:** Obras → Finanzas → Materiales → fotos. En `recargar`, antes: Finanzas y Materiales se vacían, se vacían las colas de la plataforma y se borra el prefijo `fotos/` del bucket.
+- **Colas que vacía `recargar`** (API del panel, `DELETE /api/queues/%2F/{cola}/contents`, solo las que existan): `obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y las `n8n.*`. `notificaciones` también, aunque la 010 todavía no exista: sus mensajes acumulados apuntan a obras y planillas que se borraron y generarían avisos falsos cuando se cree el servicio.
+- **Fotos:** `s3-cli` (perfil `herramientas`) sube `semilla/fotos/` a `s3://$S3_BUCKET/fotos/` con `aws s3 sync` y `recargar` borra ese prefijo. Un `S3_BUCKET` que no empiece con `supervision-dev-` se rechaza; si faltan el bucket o las claves, la semilla salta las fotos con un aviso y sigue (las filas de las fotos se cargan igual en Obras).
+- **Keycloak:** la semilla comprueba con la API de administración que los 9 usuarios existen con su `id`; si no, se detiene. `recargar` reimporta el realm (`docker compose up -d --force-recreate keycloak`).
