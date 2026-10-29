@@ -108,10 +108,10 @@ ejecutar() {
   [ "$codigo" -eq 0 ] || detener "$nombre terminó con error ($codigo). Revisa la salida de arriba; los otros servicios no se tocaron después de este paso."
 }
 
-# Líneas de resumen que imprimió un servicio (las que dicen «resumen»), sin colores de consola
+# Líneas de resumen que imprimió un servicio (las que dicen «resumen» o «D = AAAA-MM-DD»), sin colores de consola
 anotar_resumen() {
   local nombre="$1" lineas
-  lineas="$(sed -e $'s/\e\\[[0-9;]*m//g' -e 's/^[[:space:]]*//' "$TEMPORAL/$nombre.log" | grep -i 'resumen' | grep -v '^>')"
+  lineas="$(sed -e $'s/\e\\[[0-9;]*m//g' -e 's/^[[:space:]]*//' "$TEMPORAL/$nombre.log" | grep -iE 'resumen|(^|[^[:alnum:]])D[[:space:]]*=[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' | grep -v '^>')"
   [ -n "$lineas" ] || lineas='(el comando no imprimió una línea de resumen; revisa su salida arriba)'
   while IFS= read -r linea; do RESUMEN+="$(printf '%-11s %s' "$nombre:" "$linea")"$'\n'; done <<< "$lineas"
 }
