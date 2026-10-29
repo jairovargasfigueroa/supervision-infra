@@ -1,0 +1,49 @@
+/* Colores y forma de docs/diseno-visual.md (tokens primario, fondo, texto, borde, error). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --keycloak-logo-url: url('../img/logo.svg');
+  --keycloak-logo-height: 56px;
+  --keycloak-logo-width: 300px;
+  --keycloak-card-top-color: #0E4D5C;
+
+  --pf-v5-global--FontFamily--text: 'Inter', system-ui, sans-serif;
+  --pf-v5-global--FontFamily--heading: 'Inter', system-ui, sans-serif;
+  --pf-v5-global--primary-color--100: #0E4D5C;
+  --pf-v5-global--primary-color--200: #0A3741;
+  --pf-v5-global--link--Color: #0E4D5C;
+  --pf-v5-global--link--Color--hover: #0A3741;
+  --pf-v5-global--Color--100: #14232A;
+  --pf-v5-global--Color--200: #56676F;
+  --pf-v5-global--BorderColor--100: #DAE2E5;
+  --pf-v5-global--danger-color--100: #B42318;
+  --pf-v5-global--BorderRadius--sm: 6px;
+  --pf-v5-c-button--BorderRadius: 6px;
+  --pf-v5-c-form-control--BorderRadius: 6px;
+}
+
+.login-pf body {
+  background: #F2F5F6;
+}
+
+.pf-v5-c-login__main {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(20, 35, 42, 0.12);
+}
+
+.pf-v5-c-login__main-header {
+  border-top-width: 6px;
+}
+
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: #0E4D5C;
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: #0A3741;
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: #0A3741;
+  --pf-v5-c-button--m-primary--active--BackgroundColor: #0A3741;
+}
+
+*:focus-visible {
+  outline: 2px solid #F08A24;
+  outline-offset: 2px;
+}

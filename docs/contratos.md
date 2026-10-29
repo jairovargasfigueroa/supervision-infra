@@ -28,3 +28,23 @@ El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servi
 ## MongoDB
 
 *Replica set* de un nodo `rs0` con el miembro `localhost:27017`, en el contenedor (`mongo-init`) y en la instalación local (`scripts/mongo-local-replica.*`). Los servicios se conectan con `mongodb://localhost:27017/<base>?replicaSet=rs0`.
+
+## Keycloak: realm `supervision`
+
+Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http://localhost:8080/realms/supervision`.
+
+- Roles del realm: `admin`, `residente`, `gerente`, `maestro`, `almacenero`, `cliente`.
+- Todos los tokens llevan la audiencia `plataforma-api` (mapper de audiencia en cada cliente).
+- Token de acceso: 5 minutos. Sesión SSO: 10 horas. Idioma: solo español. Tema de inicio de sesión: `supervision`.
+- Contraseñas: mínimo 8 caracteres, 1 mayúscula, 1 número, distinta del usuario. Bloqueo temporal tras 5 intentos fallidos.
+
+| Cliente | Tipo | Redirecciones | Uso |
+|---|---|---|---|
+| `erp` | público, PKCE S256 | `http://localhost:4200/*` | shell y microfrontends |
+| `portal` | público, PKCE S256 | `http://localhost:4300/*` | portal del cliente |
+| `app-obra` | público, PKCE S256 | `exp://*`, `appobra://*` | app de obra |
+| `gateway` | confidencial, *service account* con `realm-management: view-users` | — | el gateway lee usuarios. Secreto **solo de desarrollo**: `gateway-secreto-solo-desarrollo` |
+
+Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
+
+Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`.
