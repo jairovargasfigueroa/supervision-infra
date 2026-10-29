@@ -24,3 +24,7 @@ Un usuario por servicio, con permisos de configurar, escribir y leer en el vhost
 | `notificaciones` | `RABBITMQ_NOTIFICACIONES_CLAVE` | services/notificaciones (010, `RABBITMQ_URL`) |
 
 El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servicios usan su propio usuario.
+
+## MongoDB
+
+*Replica set* de un nodo `rs0` con el miembro `localhost:27017`, en el contenedor (`mongo-init`) y en la instalación local (`scripts/mongo-local-replica.*`). Los servicios se conectan con `mongodb://localhost:27017/<base>?replicaSet=rs0`.
