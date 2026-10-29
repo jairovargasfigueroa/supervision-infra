@@ -16,6 +16,8 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | `keycloak/temas/supervision/login/` | Tema de inicio de sesión: `theme.properties` (extiende `keycloak.v2`), CSS y logo | — |
 | `scripts/` | Un `.ps1` y un `.sh` por acción, con el mismo comportamiento | Script nuevo → en los dos lenguajes y en el `CLAUDE.md` |
 | `pruebas/humo.mjs` | Pruebas de humo con Node 24 (sin dependencias) contra el entorno levantado | Se amplía con cada pieza nueva |
+| `pruebas/saga.mjs` | Prueba de punta a punta de la saga «aprobar planilla» (008) contra los servicios corriendo; crea una obra y aprueba su planilla | Se ejecuta a mano (README) |
+| `pruebas/token-usuario.mjs` | Token de un usuario de prueba con el flujo real del navegador (código + PKCE) | Lo usan las pruebas de punta a punta |
 | `docs/specs/NNN-nombre/tareas.md` | Tareas de `infra` de cada funcionalidad | — |
 
 ## Reglas

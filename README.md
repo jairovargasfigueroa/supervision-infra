@@ -32,3 +32,13 @@ La app usa `localhost` (Keycloak 8080, Obras 8081, Materiales 8082, Metro 8090) 
 2. Conecta el cable y acepta el aviso en el celular; `adb devices` debe mostrarlo.
 3. `./scripts/celular.ps1` (repetir si se reconecta el celular).
 4. En `mobile/app-obra`: `npm start` y abre la app en Expo Go.
+
+## Prueba de punta a punta de la saga «aprobar planilla» (008)
+
+Con el entorno levantado y los servicios corriendo (Obras, Materiales, Finanzas con `mensajeria:consumir` **y** `mensajeria:publicar`, y el gateway):
+
+```powershell
+node pruebas/saga.mjs
+```
+
+Registra una obra nueva («Prueba saga 008 …»), el residente elabora y presenta la planilla del mes, el cliente la aprueba por el portal (REST de Obras) y comprueba: planilla `APROBADA` con `COB-AAAA-NNNN`, cobro `PENDIENTE` por el neto que vence a los 30 días, reserva consumida (saldo, cobrado y reservado), avance de la obra y periodo cerrado en Materiales (`409 PERIODO_CERRADO`). Deja esos datos creados (y un material `PRB-SAGA-…` si el catálogo no tenía ninguno activo): úsala solo en desarrollo.
