@@ -48,3 +48,22 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
 
 Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`.
+
+## PostgreSQL
+
+Bases `obras_db` y `finanzas_db` (`postgres/init.sql` en el contenedor; en la instalación local se crean una vez a mano con `CREATE DATABASE`). Cada servicio crea sus tablas con sus migraciones.
+
+## RabbitMQ: exchange, colas y enlaces
+
+Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`) y 010 (cola `notificaciones`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.
+
+| Cola | Enlaces (claves de enrutamiento) |
+|---|---|
+| `obras` | `evento.finanzas.ContratoRegistrado`, `evento.finanzas.ContratoRechazado`, `evento.finanzas.SaldoReservado`, `evento.finanzas.SaldoInsuficiente`, `evento.materiales.ConsumosCerrados`, `evento.materiales.CierreFallido`, `evento.finanzas.CobroEmitido`, `evento.finanzas.CobroFallido` |
+| `materiales` | `evento.obras.ObraRegistrada`, `comando.materiales.CerrarConsumos`, `comando.materiales.ReabrirConsumos` |
+| `finanzas` | `evento.obras.ObraRegistrada`, `comando.finanzas.ReservarSaldo`, `comando.finanzas.EmitirCobro`, `comando.finanzas.LiberarReserva` |
+| `ia` | `evento.obras.ObraRegistrada`, `evento.finanzas.ContratoRegistrado`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.finanzas.CobroEmitido`, `evento.materiales.MovimientoRegistrado` |
+| `notificaciones` | `evento.obras.ObraRegistrada`, `evento.obras.PlanillaPresentada`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.materiales.StockBajo`, `evento.finanzas.CobroVencido`, `evento.finanzas.ContratoRechazado` |
+| `plataforma.fallidos` | ninguno: los servicios publican ahí directo (exchange por defecto, clave `plataforma.fallidos`) los mensajes que fallan 3 veces |
+
+Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan.

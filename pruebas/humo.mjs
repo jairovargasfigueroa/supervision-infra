@@ -43,6 +43,58 @@ prueba('RabbitMQ: hay un usuario por servicio con permisos en el vhost "/"', asy
   }
 });
 
+// --- RabbitMQ: exchange, colas y enlaces (1.5) ---
+// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401 y 010).
+const ENLACES = JSON.parse(readFileSync(fileURLToPath(new URL('./enlaces.json', import.meta.url)), 'utf8'));
+
+prueba('RabbitMQ: exchange plataforma (topic, durable) y colas durables', async () => {
+  const exchange = await rabbit('/exchanges/%2F/plataforma');
+  afirmar(exchange.type === 'topic' && exchange.durable, 'exchange plataforma mal declarado');
+  for (const cola of [...Object.keys(ENLACES), 'plataforma.fallidos']) {
+    const datos = await rabbit(`/queues/%2F/${encodeURIComponent(cola)}`);
+    afirmar(datos.durable, `la cola ${cola} no es durable`);
+  }
+});
+
+prueba('RabbitMQ: cada cola tiene exactamente sus enlaces', async () => {
+  for (const [cola, esperados] of Object.entries(ENLACES)) {
+    const enlaces = (await rabbit(`/bindings/%2F/e/plataforma/q/${cola}`)).map((e) => e.routing_key).sort();
+    afirmar(
+      JSON.stringify(enlaces) === JSON.stringify([...esperados].sort()),
+      `${cola}: tiene [${enlaces}] y se esperaba [${[...esperados].sort()}]`,
+    );
+  }
+});
+
+prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales, ia y notificaciones', async () => {
+  const respuesta = await fetch(`${RABBITMQ}/exchanges/%2F/plataforma/publish`, {
+    method: 'POST',
+    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      properties: {},
+      routing_key: 'evento.obras.ObraRegistrada',
+      payload: '{"prueba":"humo"}',
+      payload_encoding: 'string',
+    }),
+  });
+  const { routed } = await respuesta.json();
+  afirmar(routed, 'el mensaje no llegó a ninguna cola');
+  // Saca el mensaje de prueba de cada cola para no dejar basura
+  const destinos = Object.entries(ENLACES)
+    .filter(([, claves]) => claves.includes('evento.obras.ObraRegistrada'))
+    .map(([cola]) => cola);
+  afirmar(destinos.sort().join() === 'finanzas,ia,materiales,notificaciones', `destinos: ${destinos}`);
+  for (const cola of destinos) {
+    const sacar = await fetch(`${RABBITMQ}/queues/%2F/${cola}/get`, {
+      method: 'POST',
+      headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
+      body: JSON.stringify({ count: 10, ackmode: 'ack_requeue_false', encoding: 'auto' }),
+    });
+    const mensajes = await sacar.json();
+    afirmar(mensajes.some((m) => m.payload === '{"prueba":"humo"}'), `no llegó a la cola ${cola}`);
+  }
+});
+
 // --- Keycloak (1.2) ---
 prueba('Keycloak: responde el realm master', async () => {
   const respuesta = await fetch(`${KEYCLOAK}/realms/master/.well-known/openid-configuration`);

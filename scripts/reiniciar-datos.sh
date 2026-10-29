@@ -16,5 +16,5 @@ if [ "$confirmado" != si ]; then
   read -r -p "Esto borra los datos de RabbitMQ, Keycloak y de las bases en contenedor. ¿Continuar? (s/N) " respuesta
   [ "$respuesta" = s ] || [ "$respuesta" = S ] || { echo "Cancelado."; exit 0; }
 fi
-docker compose --profile '*' down --volumes
+docker compose --profile '*' down --volumes --remove-orphans
 ./scripts/levantar.sh "${argumentos[@]}"

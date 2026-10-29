@@ -1,5 +1,5 @@
 ﻿# Levanta el entorno y espera a que todo esté sano. Uso: ./scripts/levantar.ps1 [-Perfil bases[,otro]]
-# No usa "up --wait" porque toma como fallo a los contenedores que corren una vez y terminan (rabbitmq-usuarios, mongo-init).
+# No usa "up --wait" porque toma como fallo a los contenedores que corren una vez y terminan (rabbitmq-init, mongo-init).
 param([string[]]$Perfil = @())
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not (Test-Path .env)) { Write-Error 'Falta .env: copia .env.example a .env y completa las contraseñas.'; exit 1 }
