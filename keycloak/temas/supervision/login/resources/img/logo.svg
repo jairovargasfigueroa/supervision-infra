@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="56" viewBox="0 0 300 56" role="img" aria-label="Supervisión de obras">
+  <rect x="2" y="4" width="48" height="48" rx="10" fill="#0E4D5C"/>
+  <path d="M12 42V24l14-9 14 9v18" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M20 42v-9h12v9" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M10 42h32" stroke="#F08A24" stroke-width="3" stroke-linecap="round"/>
+  <text x="62" y="26" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="600" fill="#14232A">Supervisión</text>
+  <text x="62" y="46" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="500" fill="#56676F">de obras</text>
+</svg>
