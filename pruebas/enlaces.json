@@ -1,0 +1,40 @@
+{
+  "obras": [
+    "evento.finanzas.ContratoRegistrado",
+    "evento.finanzas.ContratoRechazado",
+    "evento.finanzas.SaldoReservado",
+    "evento.finanzas.SaldoInsuficiente",
+    "evento.materiales.ConsumosCerrados",
+    "evento.materiales.CierreFallido",
+    "evento.finanzas.CobroEmitido",
+    "evento.finanzas.CobroFallido"
+  ],
+  "materiales": [
+    "evento.obras.ObraRegistrada",
+    "comando.materiales.CerrarConsumos",
+    "comando.materiales.ReabrirConsumos"
+  ],
+  "finanzas": [
+    "evento.obras.ObraRegistrada",
+    "comando.finanzas.ReservarSaldo",
+    "comando.finanzas.EmitirCobro",
+    "comando.finanzas.LiberarReserva"
+  ],
+  "ia": [
+    "evento.obras.ObraRegistrada",
+    "evento.finanzas.ContratoRegistrado",
+    "evento.obras.PlanillaAprobada",
+    "evento.obras.PlanillaObservada",
+    "evento.finanzas.CobroEmitido",
+    "evento.materiales.MovimientoRegistrado"
+  ],
+  "notificaciones": [
+    "evento.obras.ObraRegistrada",
+    "evento.obras.PlanillaPresentada",
+    "evento.obras.PlanillaAprobada",
+    "evento.obras.PlanillaObservada",
+    "evento.materiales.StockBajo",
+    "evento.finanzas.CobroVencido",
+    "evento.finanzas.ContratoRechazado"
+  ]
+}

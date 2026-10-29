@@ -1,0 +1,288 @@
+{
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "plataforma",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "obras",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "materiales",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "finanzas",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "ia",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "notificaciones",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "plataforma.fallidos",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.ContratoRegistrado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.ContratoRechazado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.SaldoReservado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.SaldoInsuficiente",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.materiales.ConsumosCerrados",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.materiales.CierreFallido",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroEmitido",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "obras",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroFallido",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "materiales",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.ObraRegistrada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "materiales",
+      "destination_type": "queue",
+      "routing_key": "comando.materiales.CerrarConsumos",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "materiales",
+      "destination_type": "queue",
+      "routing_key": "comando.materiales.ReabrirConsumos",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "finanzas",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.ObraRegistrada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "finanzas",
+      "destination_type": "queue",
+      "routing_key": "comando.finanzas.ReservarSaldo",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "finanzas",
+      "destination_type": "queue",
+      "routing_key": "comando.finanzas.EmitirCobro",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "finanzas",
+      "destination_type": "queue",
+      "routing_key": "comando.finanzas.LiberarReserva",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.ObraRegistrada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.ContratoRegistrado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.PlanillaAprobada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.PlanillaObservada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroEmitido",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.materiales.MovimientoRegistrado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.ObraRegistrada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.PlanillaPresentada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.PlanillaAprobada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.obras.PlanillaObservada",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.materiales.StockBajo",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroVencido",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "notificaciones",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.ContratoRechazado",
+      "arguments": {}
+    }
+  ]
+}

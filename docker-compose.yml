@@ -1,0 +1,120 @@
+# Entorno de desarrollo. Versiones y puertos: docs/entorno-local.md de supervision-docs.
+# Sin perfil: RabbitMQ y Keycloak. Con --profile bases: también PostgreSQL y MongoDB.
+name: supervision
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.4-management
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USUARIO:?falta RABBITMQ_ADMIN_USUARIO en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_CLAVE:?falta RABBITMQ_ADMIN_CLAVE en .env}
+    volumes:
+      - datos-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # Importa las definiciones (exchange, colas y enlaces) y crea un usuario por servicio con las contraseñas de .env; termina.
+  rabbitmq-init:
+    image: curlimages/curl:8.17.0
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: http://rabbitmq:15672
+      RABBITMQ_ADMIN_USUARIO: ${RABBITMQ_ADMIN_USUARIO}
+      RABBITMQ_ADMIN_CLAVE: ${RABBITMQ_ADMIN_CLAVE}
+      RABBITMQ_OBRAS_CLAVE: ${RABBITMQ_OBRAS_CLAVE:?falta RABBITMQ_OBRAS_CLAVE en .env}
+      RABBITMQ_MATERIALES_CLAVE: ${RABBITMQ_MATERIALES_CLAVE:?falta RABBITMQ_MATERIALES_CLAVE en .env}
+      RABBITMQ_FINANZAS_CLAVE: ${RABBITMQ_FINANZAS_CLAVE:?falta RABBITMQ_FINANZAS_CLAVE en .env}
+      RABBITMQ_IA_CLAVE: ${RABBITMQ_IA_CLAVE:?falta RABBITMQ_IA_CLAVE en .env}
+      RABBITMQ_NOTIFICACIONES_CLAVE: ${RABBITMQ_NOTIFICACIONES_CLAVE:?falta RABBITMQ_NOTIFICACIONES_CLAVE en .env}
+    volumes:
+      - ./rabbitmq/iniciar.sh:/iniciar.sh:ro
+      - ./rabbitmq/definiciones.json:/definiciones.json:ro
+    entrypoint: ["sh", "/iniciar.sh"]
+    restart: "no"
+
+  # Base H2 dentro del contenedor (sin volumen): al recrearlo (bajar y levantar) el realm se vuelve a importar.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8080:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USUARIO:?falta KEYCLOAK_ADMIN_USUARIO en .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_CLAVE:?falta KEYCLOAK_ADMIN_CLAVE en .env}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_PORT: "8080"
+      # El tema se lee del disco en cada petición: los cambios se ven sin reiniciar
+      KC_SPI_THEME__CACHE_THEMES: "false"
+      KC_SPI_THEME__CACHE_TEMPLATES: "false"
+    volumes:
+      - ./keycloak/realm-supervision.json:/opt/keycloak/data/import/realm-supervision.json:ro
+      - ./keycloak/temas/supervision:/opt/keycloak/themes/supervision:ro
+    healthcheck:
+      # La imagen no trae curl: se pide /health/ready al puerto de gestión con bash
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+  postgres:
+    image: postgres:17
+    profiles: ["bases"]
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USUARIO:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - datos-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d obras_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mongo:
+    image: mongo:8.0
+    profiles: ["bases"]
+    hostname: mongo
+    # Replica set de un nodo: lo necesitan las transacciones del outbox de Materiales
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - datos-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Ejecuta rs.initiate() una vez que MongoDB responde y termina.
+  mongo-init:
+    image: mongo:8.0
+    profiles: ["bases"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./mongo/iniciar-replica.js:/iniciar-replica.js:ro
+    command: ["mongosh", "--quiet", "mongodb://mongo:27017/?directConnection=true", "/iniciar-replica.js"]
+    restart: "no"
+
+volumes:
+  datos-rabbitmq:
+  datos-postgres:
+  datos-mongo:

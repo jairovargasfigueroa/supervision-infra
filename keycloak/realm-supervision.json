@@ -1,0 +1,396 @@
+{
+  "realm": "supervision",
+  "enabled": true,
+  "displayName": "Supervisión de obras",
+  "displayNameHtml": "<div class=\"kc-logo-text\"><span>Supervisión de obras</span></div>",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "es"
+  ],
+  "defaultLocale": "es",
+  "loginTheme": "supervision",
+  "passwordPolicy": "length(8) and upperCase(1) and digits(1) and notUsername(undefined)",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 36000,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrador de la constructora (ERP)"
+      },
+      {
+        "name": "residente",
+        "description": "Residente de obra (ERP)"
+      },
+      {
+        "name": "gerente",
+        "description": "Gerente (ERP)"
+      },
+      {
+        "name": "maestro",
+        "description": "Maestro de obra (app)"
+      },
+      {
+        "name": "almacenero",
+        "description": "Almacenero (app)"
+      },
+      {
+        "name": "cliente",
+        "description": "Cliente de la constructora (portal)"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "erp",
+      "name": "ERP",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "portal",
+      "name": "Portal del cliente",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:4300/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4300"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4300/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "app-obra",
+      "name": "App de obra",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "exp://*",
+        "appobra://*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "exp://*##appobra://*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "gateway",
+      "name": "Gateway GraphQL",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "gateway-secreto-solo-desarrollo",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "username": "admin1",
+      "enabled": true,
+      "firstName": "Carla",
+      "lastName": "Méndez Rivero",
+      "email": "admin1@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "admin"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "username": "gerente1",
+      "enabled": true,
+      "firstName": "Jorge",
+      "lastName": "Antelo Suárez",
+      "email": "gerente1@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "gerente"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "username": "residente1",
+      "enabled": true,
+      "firstName": "Daniela",
+      "lastName": "Roca Justiniano",
+      "email": "residente1@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "residente"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "username": "residente2",
+      "enabled": true,
+      "firstName": "Marcelo",
+      "lastName": "Vaca Saucedo",
+      "email": "residente2@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "residente"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "username": "maestro1",
+      "enabled": true,
+      "firstName": "Freddy",
+      "lastName": "Choque Mamani",
+      "email": "maestro1@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "maestro"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000006",
+      "username": "almacenero1",
+      "enabled": true,
+      "firstName": "Rosa",
+      "lastName": "Flores Arteaga",
+      "email": "almacenero1@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "almacenero"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000007",
+      "username": "cliente1",
+      "enabled": true,
+      "firstName": "Roberto",
+      "lastName": "Justiniano Paz",
+      "email": "cliente1@correo.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "cliente"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000008",
+      "username": "cliente2",
+      "enabled": true,
+      "firstName": "Patricia",
+      "lastName": "Saucedo Ribera",
+      "email": "cliente2@correo.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "cliente"
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000009",
+      "username": "demo1",
+      "enabled": true,
+      "firstName": "Lucía",
+      "lastName": "Paz Antelo",
+      "email": "demo1@constructora-andina.test",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Prueba123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-supervision",
+        "residente",
+        "cliente"
+      ]
+    },
+    {
+      "username": "service-account-gateway",
+      "enabled": true,
+      "serviceAccountClientId": "gateway",
+      "realmRoles": [
+        "default-roles-supervision"
+      ],
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "view-realm"
+        ]
+      }
+    }
+  ]
+}
