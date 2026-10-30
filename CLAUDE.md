@@ -1,6 +1,6 @@
 # Infra (entorno de desarrollo)
 
-Entorno de desarrollo de la plataforma: Docker Compose con RabbitMQ y Keycloak (y PostgreSQL y MongoDB como perfil opcional), el realm `supervision`, las definiciones de RabbitMQ y los scripts para levantar, ver el estado y reiniciar todo. Más adelante, la carga de datos de prueba (011) y las pruebas de punta a punta.
+Entorno de desarrollo de la plataforma: Docker Compose con RabbitMQ y Keycloak (y PostgreSQL y MongoDB como perfil opcional), el realm `supervision`, las definiciones de RabbitMQ y los scripts para levantar, ver el estado y reiniciar todo, la carga de los datos de prueba (011, carpeta `semilla/`) y las pruebas de punta a punta.
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales. Lo que corre aquí, sus versiones y puertos están en `docs/entorno-local.md` de esa carpeta: **es la fuente; si algo cambia, se actualiza allí también.**
 
@@ -9,7 +9,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ## Stack
 
 - Docker Compose (Docker Desktop con WSL 2)
-- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar)
+- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo)
 - Scripts en PowerShell (`.ps1`, Windows) y Bash (`.sh`, Linux y macOS) que hacen lo mismo
 - Pruebas de humo con Node 24 (`node pruebas/humo.mjs`, sin dependencias)
 
@@ -25,6 +25,8 @@ cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/celular.ps1             # adb reverse para probar la app en el celular (8080, 8081, 8082 y Metro 8090)
 node pruebas/humo.mjs             # comprueba realm, colas y enlaces contra lo que está corriendo
 node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (008; con los servicios corriendo)
+./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
+./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
 docker compose config -q          # valida el docker-compose.yml
 ```
 
@@ -36,7 +38,7 @@ En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
 
 ```
 docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nombre
-.env.example              variables (contraseñas vacías, SEMILLA_PERMITIDA)
+.env.example              variables (contraseñas y claves vacías, SEMILLA_PERMITIDA, carpetas de los servicios, bucket S3)
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
 rabbitmq/
@@ -48,11 +50,18 @@ keycloak/
 scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica y celular (.ps1 y .sh)
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
+semilla/
+  semilla.ps1 · .sh       carga los datos de prueba (011): guardas, D, Keycloak, Obras → Finanzas → Materiales, fotos, resumen
+  recargar.ps1 · .sh      vacía (servicios, colas, bucket) y vuelve a cargar
+  comun.ps1 · comun.sh    pasos comunes de los dos scripts (uno por lenguaje, mismo comportamiento)
+  plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
+  fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 docs/                     estructura, contratos y tareas por funcionalidad
 ```
 
 ## Reglas del proyecto
 
+- **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»).
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
 - Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm.
 - Las colas y enlaces de RabbitMQ siguen `docs/contratos/eventos.md` de la carpeta general (y las specs que agregan colas). Un enlace nuevo se agrega en `rabbitmq/definiciones.json`, en `docs/contratos.md` y en `pruebas/humo.mjs`.
