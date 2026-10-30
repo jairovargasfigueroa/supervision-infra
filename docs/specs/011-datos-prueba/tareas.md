@@ -11,5 +11,5 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Servicio `s3-cli` (`amazon/aws-cli:2.38.0`) en Docker Compose con perfil `herramientas`, con las credenciales del usuario IAM de desarrollo y el bucket de `S3_BUCKET` (debe empezar con `supervision-dev-`), y la carpeta de fotos montada de solo lectura
 - [x] `semilla/semilla.ps1` y `semilla/semilla.sh`: guardas (`SEMILLA_PERMITIDA=si`), comprobación de servicios, D única en `SEMILLA_FECHA`, verificación de usuarios de Keycloak, Obras → Finanzas → Materiales → fotos, resumen; variables nuevas en `.env.example`
 - [x] `semilla/recargar.ps1` y `semilla/recargar.sh`: confirmación (`-Si` / `--si`), vaciado de cada servicio con su comando, de las colas de la plataforma y del bucket, reimportación de usuarios si sus `id` no coinciden, y carga
-- [ ] Prueba documentada: `semilla` dos veces (mismos conteos), revisión de los criterios de `requisitos.md`, aprobación de la planilla 3 de la obra 1 en el portal y `recargar`
+- [x] Prueba documentada: `semilla` dos veces (mismos conteos), revisión de los criterios de `requisitos.md`, aprobación de la planilla 3 de la obra 1 en el portal y `recargar`
 - [x] README de infra: sección «Datos de prueba»
