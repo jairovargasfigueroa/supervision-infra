@@ -32,6 +32,17 @@ docker compose --profile ia stop ia-api ia-worker
 
 Construye la imagen de `services/ia` (`IA_DIR` de `.env`) y la usa para los dos procesos. No usa el `.env` de IA: sus variables están en `docker-compose.yml` (`x-ia-entorno`) con las claves de este `.env` (`POSTGRES_IA_CLAVE`, `RABBITMQ_IA_CLAVE`). PostgreSQL (5433) y MongoDB se buscan en la máquina (`host.docker.internal`), así que sirven tanto la instalación local como el perfil `bases`. `ia-api` aplica las migraciones de `reportes_db` antes de atender. Para desarrollar el servicio, también se puede correr sin Docker (`services/ia`, con `uv`); no levantes los dos a la vez (los dos usan el 8085 y la cola `ia`).
 
+### Carga inicial de la base de reportes (401)
+
+Llena `reportes_db` con lo que ya tienen Obras, Materiales y Finanzas (por ejemplo, los datos de prueba): se corre **una vez** al crear la base, y otra vez después de cada `recargar`. Con los tres servicios levantados en la máquina:
+
+```powershell
+docker compose --profile ia-carga run --rm ia-carga-inicial   # en contenedor (aplica antes las migraciones)
+# o, sin Docker, en services/ia:  uv run alembic upgrade head; uv run python -m ia.carga_inicial
+```
+
+Termina con código 0 si cargó todo y distinto de 0 si falló (dice en qué obra y servicio); correrla otra vez no duplica nada. Usa el cliente `ia-reportes` de Keycloak con el secreto `IA_REPORTES_CLIENT_SECRET` de este `.env` (en contenedor, es el único proceso que lo recibe). Llega a los servicios por `host.docker.internal:8081`, `8082` y `8083`: si alguno escucha solo en `127.0.0.1` y no responde desde el contenedor, levántalo escuchando en todas las interfaces o corre la carga sin Docker.
+
 ### Base de reportes (401) en la instalación local de PostgreSQL
 
 El contenedor (perfil `bases`) crea solo, con el volumen vacío, el usuario `ia` (contraseña `POSTGRES_IA_CLAVE` de `.env`) y la base `reportes_db`, dueña de ese usuario (`postgres/init-reportes.sh`). En tu PostgreSQL instalado en el 5433 hazlo una vez a mano, como `postgres`, con la misma contraseña que pusiste en `.env`:

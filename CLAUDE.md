@@ -19,6 +19,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/levantar.ps1            # RabbitMQ, Keycloak y DynamoDB Local (agrega -Perfil bases para PostgreSQL y MongoDB)
 docker compose --profile ia up -d --build   # 401: ia-api (8085) e ia-worker desde la imagen de services/ia (opcional)
+docker compose --profile ia-carga run --rm ia-carga-inicial   # 401: carga inicial de reportes_db (una vez, y después de recargar)
 ./scripts/estado.ps1              # qué contenedor está sano y GET /salud de cada servicio que corre
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)

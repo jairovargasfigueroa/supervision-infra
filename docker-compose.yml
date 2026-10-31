@@ -225,6 +225,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # 401 · Carga inicial de la base de reportes: corre una vez y termina (código 0 si cargó todo). Perfil propio para
+  # no correrla en cada "up": docker compose --profile ia-carga run --rm ia-carga-inicial
+  # Necesita Obras, Materiales y Finanzas levantados en la máquina; aplica antes las migraciones (alembic es idempotente).
+  # Es el único proceso que recibe el secreto de ia-reportes.
+  ia-carga-inicial:
+    <<: *ia
+    profiles: ["ia-carga"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-carga-inicial"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    environment:
+      <<: *ia-entorno
+      IA_OBRAS_URL: http://host.docker.internal:8081
+      IA_MATERIALES_URL: http://host.docker.internal:8082
+      IA_FINANZAS_URL: http://host.docker.internal:8083
+      IA_REPORTES_CLIENT_ID: ia-reportes
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   datos-rabbitmq:
   datos-postgres:
