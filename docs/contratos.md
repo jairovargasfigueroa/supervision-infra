@@ -68,7 +68,7 @@ Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos
 | `notificaciones` | `evento.obras.ObraRegistrada`, `evento.obras.PlanillaPresentada`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.materiales.StockBajo`, `evento.finanzas.CobroVencido`, `evento.finanzas.ContratoRechazado` |
 | `plataforma.fallidos` | ninguno: los servicios publican ahí directo (exchange por defecto, clave `plataforma.fallidos`) los mensajes que fallan 3 veces |
 
-Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan.
+Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan. Comprobado en la 401 (31/10/2026): la cola `ia` tiene sus 6 enlaces, el usuario `ia` sus permisos y, sin consumidor, guarda los eventos persistentes hasta que el servicio de IA los lea (`pruebas/humo.mjs`; la prueba solo publica mensajes de prueba en colas vacías y sin consumidores, para no descartar mensajes reales).
 
 ## Datos de prueba (011)
 

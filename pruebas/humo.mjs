@@ -27,6 +27,38 @@ async function rabbit(ruta) {
 
 const pruebas = [];
 const prueba = (nombre, fn) => pruebas.push({ nombre, fn });
+const avisos = [];
+
+// Una cola con mensajes guardados (por ejemplo, ia con el servicio de IA apagado, criterio 13 de la 401) o con
+// consumidores no se usa para mensajes de prueba: sacarlos con /get descartaría también los mensajes reales.
+async function colasOcupadas(colas) {
+  const ocupadas = [];
+  for (const cola of colas) {
+    const datos = await rabbit(`/queues/%2F/${encodeURIComponent(cola)}`);
+    if ((datos.messages ?? 0) > 0 || (datos.consumers ?? 0) > 0) {
+      ocupadas.push(`${cola} (${datos.messages ?? 0} mensajes, ${datos.consumers ?? 0} consumidores)`);
+    }
+  }
+  return ocupadas;
+}
+
+async function publicarPrueba(clave, payload) {
+  const respuesta = await fetch(`${RABBITMQ}/exchanges/%2F/plataforma/publish`, {
+    method: 'POST',
+    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
+    body: JSON.stringify({ properties: { delivery_mode: 2 }, routing_key: clave, payload, payload_encoding: 'string' }),
+  });
+  return (await respuesta.json()).routed;
+}
+
+async function sacarMensajes(cola) {
+  const sacar = await fetch(`${RABBITMQ}/queues/%2F/${cola}/get`, {
+    method: 'POST',
+    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
+    body: JSON.stringify({ count: 10, ackmode: 'ack_requeue_false', encoding: 'auto' }),
+  });
+  return sacar.json();
+}
 function afirmar(condicion, mensaje) {
   if (!condicion) throw new Error(mensaje);
 }
@@ -68,32 +100,41 @@ prueba('RabbitMQ: cada cola tiene exactamente sus enlaces', async () => {
 });
 
 prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales, ia y notificaciones', async () => {
-  const respuesta = await fetch(`${RABBITMQ}/exchanges/%2F/plataforma/publish`, {
-    method: 'POST',
-    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      properties: {},
-      routing_key: 'evento.obras.ObraRegistrada',
-      payload: '{"prueba":"humo"}',
-      payload_encoding: 'string',
-    }),
-  });
-  const { routed } = await respuesta.json();
-  afirmar(routed, 'el mensaje no llegó a ninguna cola');
-  // Saca el mensaje de prueba de cada cola para no dejar basura
   const destinos = Object.entries(ENLACES)
     .filter(([, claves]) => claves.includes('evento.obras.ObraRegistrada'))
     .map(([cola]) => cola);
   afirmar(destinos.sort().join() === 'finanzas,ia,materiales,notificaciones', `destinos: ${destinos}`);
+  const ocupadas = await colasOcupadas(destinos);
+  if (ocupadas.length) {
+    avisos.push(`no se publicó el ObraRegistrada de prueba: colas en uso o con mensajes guardados: ${ocupadas.join(', ')}`);
+    return;
+  }
+  afirmar(await publicarPrueba('evento.obras.ObraRegistrada', '{"prueba":"humo"}'), 'el mensaje no llegó a ninguna cola');
+  // Saca el mensaje de prueba de cada cola para no dejar basura
   for (const cola of destinos) {
-    const sacar = await fetch(`${RABBITMQ}/queues/%2F/${cola}/get`, {
-      method: 'POST',
-      headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
-      body: JSON.stringify({ count: 10, ackmode: 'ack_requeue_false', encoding: 'auto' }),
-    });
-    const mensajes = await sacar.json();
+    const mensajes = await sacarMensajes(cola);
     afirmar(mensajes.some((m) => m.payload === '{"prueba":"humo"}'), `no llegó a la cola ${cola}`);
   }
+});
+
+prueba('RabbitMQ: la cola ia guarda los eventos mientras el servicio de IA está apagado (401, criterio 13)', async () => {
+  const ocupadas = await colasOcupadas(['ia']);
+  if (ocupadas.length) {
+    avisos.push(`no se probó que ia guarda los eventos: ${ocupadas.join(', ')}; se prueba con IA apagado y la cola vacía`);
+    return;
+  }
+  // MovimientoRegistrado solo lo escucha ia: no llega a ningún otro servicio. Entrega persistente, como los servicios.
+  for (const n of [1, 2]) {
+    afirmar(
+      await publicarPrueba('evento.materiales.MovimientoRegistrado', `{"prueba":"humo-401-${n}"}`),
+      'MovimientoRegistrado no llegó a ninguna cola',
+    );
+  }
+  const guardados = (await sacarMensajes('ia')).map((m) => m.payload);
+  afirmar(
+    ['{"prueba":"humo-401-1"}', '{"prueba":"humo-401-2"}'].every((p) => guardados.includes(p)),
+    `la cola ia guardó [${guardados}]`,
+  );
 });
 
 // --- Keycloak (1.2) ---
@@ -295,5 +336,6 @@ for (const { nombre, fn } of pruebas) {
     console.log(`FALLA ${nombre}\n      ${error.message}`);
   }
 }
+for (const aviso of avisos) console.log(`AVISO ${aviso}`);
 console.log(`\n${pruebas.length - fallidas} de ${pruebas.length} pruebas pasaron`);
 process.exit(fallidas ? 1 : 0);
