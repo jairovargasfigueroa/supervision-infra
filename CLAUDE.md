@@ -18,6 +18,8 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ```sh
 cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/levantar.ps1            # RabbitMQ, Keycloak y DynamoDB Local (agrega -Perfil bases para PostgreSQL y MongoDB)
+docker compose --profile ia up -d --build   # 401: ia-api (8085) e ia-worker desde la imagen de services/ia (opcional)
+docker compose --profile ia-carga run --rm ia-carga-inicial   # 401: carga inicial de reportes_db (una vez, y después de recargar)
 ./scripts/estado.ps1              # qué contenedor está sano y GET /salud de cada servicio que corre
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
@@ -25,6 +27,7 @@ cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/celular.ps1             # adb reverse para probar la app en el celular (8080, 8081, 8082, 8084 y Metro 8090)
 node pruebas/humo.mjs             # comprueba realm (con la sesión offline de la app), colas, enlaces y DynamoDB Local contra lo que está corriendo
 node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (008; con los servicios corriendo)
+node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
 docker compose config -q          # valida el docker-compose.yml
@@ -40,7 +43,10 @@ En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
 docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nombre
 .env.example              variables (contraseñas y claves vacías, SEMILLA_PERMITIDA, carpetas de los servicios, bucket S3)
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
+postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)
+postgres/vaciar-reportes.sql vacía el modelo de lectura en recargar (401; lo corre el servicio psql-cli)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
+ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
   iniciar.sh              importa las definiciones y crea los usuarios por servicio desde .env (API del panel)
@@ -50,9 +56,10 @@ keycloak/
 scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica y celular (.ps1 y .sh)
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
+pruebas/reportes.mjs      prueba de integración de la base de reportes (401): eventos y carga inicial
 semilla/
   semilla.ps1 · .sh       carga los datos de prueba (011): guardas, D, Keycloak, Obras → Finanzas → Materiales, fotos, resumen
-  recargar.ps1 · .sh      vacía (servicios, colas, bucket) y vuelve a cargar
+  recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)
   comun.ps1 · comun.sh    pasos comunes de los dos scripts (uno por lenguaje, mismo comportamiento)
   plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
@@ -63,7 +70,7 @@ docs/                     estructura, contratos y tareas por funcionalidad
 
 - **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»).
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
-- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm.
+- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`).
 - Las colas y enlaces de RabbitMQ siguen `docs/contratos/eventos.md` de la carpeta general (y las specs que agregan colas). Un enlace nuevo se agrega en `rabbitmq/definiciones.json`, en `docs/contratos.md` y en `pruebas/humo.mjs`.
 - Los cambios al realm se hacen en `keycloak/realm-supervision.json` y se comprueban con `./scripts/reiniciar-datos.ps1` (Keycloak solo importa un realm que no existe).
 - Los archivos montados en contenedores (`.sh`, `.conf`, `.json`, `.js`) van con fin de línea LF (`.gitattributes`).

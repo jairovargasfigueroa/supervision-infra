@@ -10,6 +10,7 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | Keycloak | 8080 (salud en el puerto de gestión 9000, solo dentro del contenedor) |
 | PostgreSQL (perfil `bases`) | 5433 |
 | MongoDB (perfil `bases`) | 27017 |
+| Servicio de IA, `ia-api` (perfil `ia`, 401) | 8085 |
 
 ## RabbitMQ: usuarios
 
@@ -44,6 +45,7 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 | `portal` | público, PKCE S256 | `http://localhost:4300/*` | portal del cliente |
 | `app-obra` | público, PKCE S256; *scope* opcional `offline_access` (101: con `scope=openid offline_access` el *refresh token* es de tipo `Offline`) | `exp://*`, `appobra://*` | app de obra |
 | `gateway` | confidencial, *service account* con `realm-management: view-users` y `view-realm` | — | el gateway lista usuarios por rol (`view-realm` lo exige Keycloak para `GET /roles/{rol}/users`) y lee usuarios. Secreto **solo de desarrollo**: `gateway-secreto-solo-desarrollo` |
+| `ia-reportes` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con el rol de realm `gerente` | — | 401: la carga inicial del servicio de IA pide su token con *client credentials* (trae `gerente`, `azp = ia-reportes` y la audiencia `plataforma-api`) y solo hace `GET` a Obras, Materiales y Finanzas. Secreto en `IA_REPORTES_CLIENT_SECRET` de `.env` (el realm lo toma al importarse: `"secret": "${IA_REPORTES_CLIENT_SECRET}"`); se copia al `.env` de IA. Si cambia, se recrea Keycloak |
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
 
@@ -52,6 +54,8 @@ Para obtener el token de un usuario desde un script (flujo real con PKCE): `node
 ## PostgreSQL
 
 Bases `obras_db` y `finanzas_db` (`postgres/init.sql` en el contenedor; en la instalación local se crean una vez a mano con `CREATE DATABASE`). Cada servicio crea sus tablas con sus migraciones.
+
+`reportes_db` (401, servicio de IA) tiene **usuario propio** `ia`, con la contraseña `POSTGRES_IA_CLAVE` de `.env`, y es su dueño (crea las tablas con Alembic). En el contenedor lo hace `postgres/init-reportes.sh`; en la instalación local, a mano (README, «Base de reportes»). URL para el `.env` de IA: `postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db`.
 
 ## RabbitMQ: exchange, colas y enlaces
 
@@ -66,7 +70,7 @@ Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos
 | `notificaciones` | `evento.obras.ObraRegistrada`, `evento.obras.PlanillaPresentada`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.materiales.StockBajo`, `evento.finanzas.CobroVencido`, `evento.finanzas.ContratoRechazado` |
 | `plataforma.fallidos` | ninguno: los servicios publican ahí directo (exchange por defecto, clave `plataforma.fallidos`) los mensajes que fallan 3 veces |
 
-Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan.
+Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan. Comprobado en la 401 (31/10/2026): la cola `ia` tiene sus 6 enlaces, el usuario `ia` sus permisos y, sin consumidor, guarda los eventos persistentes hasta que el servicio de IA los lea (`pruebas/humo.mjs`; la prueba solo publica mensajes de prueba en colas vacías y sin consumidores, para no descartar mensajes reales).
 
 ## Datos de prueba (011)
 
@@ -82,6 +86,7 @@ Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún event
 - **Salida:** código 0 si cargó bien; distinto de 0 si falla o si su guarda se niega (producción o base no local). Infra se detiene en el primer servicio que falla.
 - **Resumen:** infra copia a su resumen final las líneas de la salida de cada comando que contienen la palabra «resumen» (sin distinguir mayúsculas) o la fecha usada como `D = AAAA-MM-DD`, así que cada servicio imprime sus conteos en una línea así (Finanzas: `Finanzas · datos de prueba con D = 2026-10-28: 3 contratos, 3 reservas, 3 cobros.`).
 - **Orden:** Obras → Finanzas → Materiales → fotos. En `recargar`, antes: Finanzas y Materiales se vacían, se vacían las colas de la plataforma y se borra el prefijo `fotos/` del bucket.
+- **Base de reportes (401):** `recargar` vacía `reportes_db` (`postgres/vaciar-reportes.sql`: las tablas `rpt_*`, `evento_aplicado` y `carga_inicial` que existan; nunca `alembic_version`) con el servicio `psql-cli` (perfil `herramientas`, usuario `ia`, `host.docker.internal:5433`); si no responde, avisa y sigue. No hay semilla propia de IA: al terminar, indica correr la carga inicial (`docker compose --profile ia-carga run --rm ia-carga-inicial` o `uv run python -m ia.carga_inicial` en `services/ia`).
 - **Colas que vacía `recargar`** (API del panel, `DELETE /api/queues/%2F/{cola}/contents`, solo las que existan): `obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y las `n8n.*`. `notificaciones` también, aunque la 010 todavía no exista: sus mensajes acumulados apuntan a obras y planillas que se borraron y generarían avisos falsos cuando se cree el servicio.
 - **Fotos:** `s3-cli` (perfil `herramientas`) sube `semilla/fotos/` a `s3://$S3_BUCKET/fotos/` con `aws s3 sync` y `recargar` borra ese prefijo. Un `S3_BUCKET` que no empiece con `supervision-dev-` se rechaza; si faltan el bucket o las claves, la semilla salta las fotos con un aviso y sigue (las filas de las fotos se cargan igual en Obras).
 - **Keycloak:** la semilla comprueba con la API de administración que los 9 usuarios existen con su `id`; si no, se detiene. `recargar` reimporta el realm (`docker compose up -d --force-recreate keycloak`).

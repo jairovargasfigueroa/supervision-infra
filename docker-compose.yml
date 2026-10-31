@@ -1,6 +1,38 @@
 # Entorno de desarrollo. Versiones y puertos: docs/entorno-local.md de supervision-docs.
 # Sin perfil: RabbitMQ, Keycloak y DynamoDB Local. Con --profile bases: también PostgreSQL y MongoDB.
+# Con --profile ia: ia-api e ia-worker construidos desde services/ia (401). Opcional: también se corren con uv.
 name: supervision
+
+# 401 · Servicio de IA en contenedor: una sola imagen para sus tres procesos (Dockerfile de services/ia).
+# PostgreSQL (5433), MongoDB y Obras, Materiales y Finanzas se alcanzan en la máquina (host.docker.internal), como
+# cuando se corren sin Docker; RabbitMQ y Keycloak, dentro del Compose. Keycloak se alcanza como localhost:8080
+# gracias a ia/reenviar-keycloak.py, para que el emisor de los tokens sea el mismo que validan los demás servicios.
+x-ia: &ia
+  build: ${IA_DIR:-../services/ia}
+  image: supervision-ia:dev
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ./ia/reenviar-keycloak.py:/reenviar-keycloak.py:ro
+
+x-ia-entorno: &ia-entorno
+  IA_ENTORNO: desarrollo
+  IA_PUERTO: "8085"
+  IA_REPORTES_DB_URL: postgresql+psycopg://ia:${POSTGRES_IA_CLAVE}@host.docker.internal:5433/reportes_db
+  IA_MONGO_URL: mongodb://host.docker.internal:27017/?directConnection=true
+  IA_MONGO_DB: ia_db
+  IA_RABBITMQ_URL: amqp://ia:${RABBITMQ_IA_CLAVE}@rabbitmq:5672/
+  IA_KEYCLOAK_ISSUER: http://localhost:8080/realms/supervision
+  IA_AUDIENCIA: plataforma-api
+  IA_ZONA_HORARIA: America/La_Paz
+  # El secreto de ia-reportes solo lo recibe ia-carga-inicial (401, «Token»)
+  IA_REPORTES_CLIENT_SECRET: ""
+
+# Arranca el reenvío de localhost:8080 a Keycloak, espera a que escuche y ejecuta el proceso del servicio
+x-ia-con-keycloak: &ia-con-keycloak >-
+  python /reenviar-keycloak.py &
+  until python -c "import socket; socket.create_connection(('127.0.0.1', 8080), 1)" 2>/dev/null; do sleep 0.2; done;
+  exec "$$@"
 
 services:
   rabbitmq:
@@ -52,6 +84,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USUARIO:?falta KEYCLOAK_ADMIN_USUARIO en .env}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_CLAVE:?falta KEYCLOAK_ADMIN_CLAVE en .env}
       KC_HEALTH_ENABLED: "true"
+      # 401: el realm importado toma de aquí el secreto del cliente ia-reportes ("secret": "${IA_REPORTES_CLIENT_SECRET}")
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
       KC_HTTP_PORT: "8080"
       # El tema se lee del disco en cada petición: los cambios se ven sin reiniciar
       KC_SPI_THEME__CACHE_THEMES: "false"
@@ -75,8 +109,12 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USUARIO:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
+      # 401: contraseña del usuario ia, dueño de reportes_db (la usa init-reportes.sh)
+      POSTGRES_IA_CLAVE: ${POSTGRES_IA_CLAVE:?falta POSTGRES_IA_CLAVE en .env}
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Corren en orden de nombre y solo con el volumen vacío
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-bases.sql:ro
+      - ./postgres/init-reportes.sh:/docker-entrypoint-initdb.d/02-reportes.sh:ro
       - datos-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d obras_db"]
@@ -150,6 +188,83 @@ services:
       - ./semilla/fotos:/semilla/fotos:ro
     # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
     command: ["--version"]
+    restart: "no"
+
+  # 401 · psql para vaciar reportes_db en "recargar" (usuario ia). Herramienta de una sola vez, como s3-cli:
+  # docker compose --profile herramientas run --rm psql-cli -f /vaciar-reportes.sql
+  # Llega al PostgreSQL de la máquina (instalación local o perfil bases) por host.docker.internal:5433.
+  psql-cli:
+    image: postgres:17
+    profiles: ["herramientas"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PGHOST: host.docker.internal
+      PGPORT: "5433"
+      PGUSER: ia
+      PGDATABASE: reportes_db
+      PGPASSWORD: ${POSTGRES_IA_CLAVE}
+    volumes:
+      - ./postgres/vaciar-reportes.sql:/vaciar-reportes.sql:ro
+    entrypoint: ["psql", "-v", "ON_ERROR_STOP=1", "-X", "-q"]
+    # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--version"]
+    restart: "no"
+
+  # 401 · API del servicio de IA (puerto 8085). Aplica las migraciones de reportes_db (alembic) antes de atender.
+  ia-api:
+    <<: *ia
+    profiles: ["ia"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-api"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    ports:
+      - "8085:8085"
+    environment:
+      <<: *ia-entorno
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/salud', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # 401 · Consumidor de la cola ia y tareas programadas. Espera a ia-api, que deja reportes_db migrada.
+  ia-worker:
+    <<: *ia
+    profiles: ["ia"]
+    command: ["ia-worker"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    environment:
+      <<: *ia-entorno
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      ia-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 401 · Carga inicial de la base de reportes: corre una vez y termina (código 0 si cargó todo). Perfil propio para
+  # no correrla en cada "up": docker compose --profile ia-carga run --rm ia-carga-inicial
+  # Necesita Obras, Materiales y Finanzas levantados en la máquina; aplica antes las migraciones (alembic es idempotente).
+  # Es el único proceso que recibe el secreto de ia-reportes.
+  ia-carga-inicial:
+    <<: *ia
+    profiles: ["ia-carga"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-carga-inicial"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    environment:
+      <<: *ia-entorno
+      IA_OBRAS_URL: http://host.docker.internal:8081
+      IA_MATERIALES_URL: http://host.docker.internal:8082
+      IA_FINANZAS_URL: http://host.docker.internal:8083
+      IA_REPORTES_CLIENT_ID: ia-reportes
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET}
+    depends_on:
+      keycloak:
+        condition: service_healthy
     restart: "no"
 
 volumes:

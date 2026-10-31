@@ -197,6 +197,35 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "ia-reportes",
+      "name": "IA: carga inicial de la base de reportes (401)",
+      "description": "Solo client credentials. El secreto sale de IA_REPORTES_CLIENT_SECRET (infra/.env) al importar el realm.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${IA_REPORTES_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -394,6 +423,15 @@
           "view-realm"
         ]
       }
+    },
+    {
+      "username": "service-account-ia-reportes",
+      "enabled": true,
+      "serviceAccountClientId": "ia-reportes",
+      "realmRoles": [
+        "default-roles-supervision",
+        "gerente"
+      ]
     }
   ]
 }

@@ -7,6 +7,7 @@ $servicios = [ordered]@{
     Materiales = 'http://localhost:8082/salud'
     Finanzas   = 'http://localhost:8083/salud'
     Sincronizacion = 'http://localhost:8084/salud'
+    IA         = 'http://localhost:8085/salud'
 }
 foreach ($nombre in $servicios.Keys) {
     try {

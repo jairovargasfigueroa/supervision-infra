@@ -51,6 +51,27 @@ ejecutar_s3() {
   return "${PIPESTATUS[0]}"
 }
 
+# psql en el contenedor psql-cli (perfil herramientas), contra reportes_db con el usuario ia (401)
+ejecutar_psql() {
+  (cd "$INFRA" && docker compose --profile herramientas run --rm --no-TTY psql-cli "$@" 2>&1) \
+    | grep -Ev '^[[:space:]]*Container .*(Creat|Start|Stopp|Remov)'
+  return "${PIPESTATUS[0]}"
+}
+
+# 401: vacía el modelo de lectura (rpt_*, evento_aplicado, carga_inicial). Si reportes_db no responde (por ejemplo,
+# todavía no se creó para el servicio de IA), avisa y sigue: no hay nada que vaciar ahí.
+vaciar_reportes() {
+  local salida
+  if salida="$(ejecutar_psql -f /vaciar-reportes.sql)"; then
+    printf '%s\n' "$salida" | sed -n 's/.*NOTICE: *//p' | sed 's/^/ok       /'
+    REPORTES=si
+  else
+    printf '%s\n' "$salida"
+    aviso 'No se pudo vaciar reportes_db (salida de arriba). Si el servicio de IA todavía no tiene su base, ignóralo; si la tiene, revisa POSTGRES_IA_CLAVE en infra/.env y vacíala antes de la carga inicial.'
+    REPORTES=no
+  fi
+}
+
 # Guardas, herramientas y piezas que deben responder. Uso: comprobar_entorno [--rabbitmq]
 comprobar_entorno() {
   paso 'Guardas'
