@@ -75,8 +75,12 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USUARIO:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
+      # 401: contraseña del usuario ia, dueño de reportes_db (la usa init-reportes.sh)
+      POSTGRES_IA_CLAVE: ${POSTGRES_IA_CLAVE:?falta POSTGRES_IA_CLAVE en .env}
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Corren en orden de nombre y solo con el volumen vacío
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-bases.sql:ro
+      - ./postgres/init-reportes.sh:/docker-entrypoint-initdb.d/02-reportes.sh:ro
       - datos-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d obras_db"]

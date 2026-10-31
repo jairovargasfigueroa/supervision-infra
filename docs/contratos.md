@@ -53,6 +53,8 @@ Para obtener el token de un usuario desde un script (flujo real con PKCE): `node
 
 Bases `obras_db` y `finanzas_db` (`postgres/init.sql` en el contenedor; en la instalación local se crean una vez a mano con `CREATE DATABASE`). Cada servicio crea sus tablas con sus migraciones.
 
+`reportes_db` (401, servicio de IA) tiene **usuario propio** `ia`, con la contraseña `POSTGRES_IA_CLAVE` de `.env`, y es su dueño (crea las tablas con Alembic). En el contenedor lo hace `postgres/init-reportes.sh`; en la instalación local, a mano (README, «Base de reportes»). URL para el `.env` de IA: `postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db`.
+
 ## RabbitMQ: exchange, colas y enlaces
 
 Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`) y 010 (cola `notificaciones`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.

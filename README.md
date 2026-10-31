@@ -23,6 +23,17 @@ En Linux y macOS: `cp .env.example .env`, `./scripts/levantar.sh [--perfil bases
 
 Si ya tienes PostgreSQL en el 5433 o MongoDB en el 27017 instalados en la máquina, **no uses el perfil `bases`**: los puertos chocan. Tu MongoDB instalado debe ser *replica set* (lo necesitan las transacciones de Materiales): ejecuta una vez, en PowerShell como administrador, `./scripts/mongo-local-replica.ps1` (en Linux o macOS, `sudo ./scripts/mongo-local-replica.sh`). La URI queda `mongodb://localhost:27017/materiales_db?replicaSet=rs0`.
 
+### Base de reportes (401) en la instalación local de PostgreSQL
+
+El contenedor (perfil `bases`) crea solo, con el volumen vacío, el usuario `ia` (contraseña `POSTGRES_IA_CLAVE` de `.env`) y la base `reportes_db`, dueña de ese usuario (`postgres/init-reportes.sh`). En tu PostgreSQL instalado en el 5433 hazlo una vez a mano, como `postgres`, con la misma contraseña que pusiste en `.env`:
+
+```sql
+CREATE ROLE ia LOGIN PASSWORD 'la POSTGRES_IA_CLAVE de infra/.env';
+CREATE DATABASE reportes_db OWNER ia;
+```
+
+El servicio de IA se conecta con `IA_REPORTES_DB_URL=postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db` y crea sus tablas con `alembic upgrade head`. Si ya tenías el volumen de PostgreSQL del contenedor de antes de la 401, el script no vuelve a correr: crea el usuario y la base con las mismas dos líneas (`docker compose exec postgres psql -U postgres`).
+
 Versiones, variables de cada proyecto y orden para levantar todo: `docs/entorno-local.md` del repo `supervision-docs`. Detalle de este repo: `CLAUDE.md` y `docs/`.
 
 ## DynamoDB Local (101)

@@ -40,6 +40,7 @@ En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
 docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nombre
 .env.example              variables (contraseñas y claves vacías, SEMILLA_PERMITIDA, carpetas de los servicios, bucket S3)
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
+postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)

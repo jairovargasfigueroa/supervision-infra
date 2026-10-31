@@ -10,6 +10,7 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | `docker-compose.yml` → `s3-cli` | AWS CLI (`amazon/aws-cli:2.38.0`, perfil `herramientas`) con `semilla/fotos` de solo lectura y las claves del usuario IAM de desarrollo de `.env`. Es una herramienta de una sola vez (sin *healthcheck*): se usa con `docker compose --profile herramientas run --rm s3-cli s3 …` | Solo la llaman los scripts de `semilla/` |
 | `.env.example` | Todas las variables con su valor de desarrollo; las contraseñas y claves vacías | Variable nueva → aquí y en el `docker-compose.yml` |
 | `postgres/init.sql` | Crea las bases de cada servicio en el contenedor (solo corre con el volumen vacío) | Base nueva → aquí y en `docs/convenciones.md` |
+| `postgres/init-reportes.sh` | 401: usuario `ia` (contraseña `POSTGRES_IA_CLAVE` de `.env`) y base `reportes_db`, dueña de ese usuario; corre después de `init.sql` (se montan como `01-bases.sql` y `02-reportes.sh`) | Un servicio con usuario propio → un script así |
 | `mongo/iniciar-replica.js` | `rs.initiate()` del *replica set* `rs0`; lo ejecuta el servicio `mongo-init` | — |
 | `rabbitmq/definiciones.json` | Vhost `/`, exchange `plataforma`, colas durables y enlaces. **Sin usuarios** (sus contraseñas vienen de `.env`) | Enlace nuevo → aquí, en `docs/contratos.md` y en `pruebas/humo.mjs` |
 | `rabbitmq/iniciar.sh` | Importa `definiciones.json` y crea (o actualiza) un usuario por servicio con la API del panel; lo ejecuta `rabbitmq-init` al levantar | Servicio nuevo → su usuario aquí y su contraseña en `.env.example` |
