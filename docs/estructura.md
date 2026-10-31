@@ -29,6 +29,7 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | `semilla/fotos/` | `generar-fotos.ps1` (System.Drawing) y las 10 fotos generadas en `{obraId}/{fotoId}.jpg` (sección 10 de `docs/datos-prueba.md`) | Foto nueva → en el script, se vuelve a correr y se sube la imagen |
 | `pruebas/humo.mjs` | Pruebas de humo con Node 24 (sin dependencias) contra el entorno levantado | Se amplía con cada pieza nueva |
 | `pruebas/saga.mjs` | Prueba de punta a punta de la saga «aprobar planilla» (008) contra los servicios corriendo; crea una obra y aprueba su planilla | Se ejecuta a mano (README) |
+| `pruebas/reportes.mjs` | Prueba de integración de la base de reportes (401) contra los servicios y el de IA corriendo: eventos (registrar obra y aprobar planilla → `rpt_obra_resumen`, `rpt_planilla`, `rpt_cobro`) y, con `--carga`, la carga inicial dos veces con el cliente `ia-reportes` real; lee `reportes_db` con `psql-cli` | Se ejecuta a mano (README) |
 | `pruebas/token-usuario.mjs` | Token de un usuario de prueba con el flujo real del navegador (código + PKCE) | Lo usan las pruebas de punta a punta |
 | `docs/specs/NNN-nombre/tareas.md` | Tareas de `infra` de cada funcionalidad | — |
 

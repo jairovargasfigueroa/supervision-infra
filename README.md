@@ -138,6 +138,18 @@ Son exactos **el día D**. Después: desde **D + 11** el cobro de la obra 2 pasa
 5. En el portal, cliente1 aprueba la planilla 3 de la obra 1 (neto 330.149,10): la saga termina bien y emite `COB-AAAA-0004`.
 6. `./semilla/recargar.ps1`, confirma, y comprueba que todo vuelve al estado del punto 1 (la planilla 3 de la obra 1 otra vez `PRESENTADA`, 3 cobros).
 
+## Prueba de integración de la base de reportes (401)
+
+Con el entorno levantado, Obras, Materiales y Finanzas corriendo (Finanzas con `mensajeria:consumir` **y** `mensajeria:publicar`), el servicio de IA corriendo (`ia-worker`; en contenedor con `docker compose --profile ia up -d --build` o con `uv` en `services/ia`) y `reportes_db` migrada:
+
+```powershell
+node pruebas/reportes.mjs              # eventos: registrar obra y aprobar planilla
+node pruebas/reportes.mjs --carga      # además, la carga inicial dos veces (antes, ./semilla/semilla.ps1)
+node pruebas/reportes.mjs --solo-carga # solo la carga inicial
+```
+
+**Eventos:** registra una obra «Prueba reportes 401 …» con zona `NORTE` por Obras, el residente elabora y presenta la planilla del mes y el cliente la aprueba (saga 008); comprueba en `reportes_db` que la obra aparece en `rpt_obra_resumen` en menos de 10 s con sus datos y avance 0, que pasa a `EN_EJECUCION`, la fila `APROBADA` de `rpt_planilla` (neto 15.770, monto del periodo 19.000, avance 19 %), el avance igual al de Obras y la fila `PENDIENTE` de `rpt_cobro` con número, cliente y zona. **Carga inicial:** corre `ia-carga-inicial` (o el comando de la variable `CARGA_INICIAL`, por ejemplo `cd ../services/ia && uv run python -m ia.carga_inicial`) con el cliente `ia-reportes` real, comprueba las 3 obras de los datos de prueba con sus 3 cobros y 67 movimientos y el mismo avance y zona que Obras, y que una segunda corrida deja las mismas filas y el mismo consumo. Lee `reportes_db` con `psql-cli` (solo `SELECT`). Deja la obra de prueba creada: úsala solo en desarrollo.
+
 ## Prueba de punta a punta de la saga «aprobar planilla» (008)
 
 Con el entorno levantado y los servicios corriendo (Obras, Materiales, Finanzas con `mensajeria:consumir` **y** `mensajeria:publicar`, y el gateway):

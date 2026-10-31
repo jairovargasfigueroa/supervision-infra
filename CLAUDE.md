@@ -27,6 +27,7 @@ docker compose --profile ia-carga run --rm ia-carga-inicial   # 401: carga inici
 ./scripts/celular.ps1             # adb reverse para probar la app en el celular (8080, 8081, 8082, 8084 y Metro 8090)
 node pruebas/humo.mjs             # comprueba realm (con la sesión offline de la app), colas, enlaces y DynamoDB Local contra lo que está corriendo
 node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (008; con los servicios corriendo)
+node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
 docker compose config -q          # valida el docker-compose.yml
@@ -55,6 +56,7 @@ keycloak/
 scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica y celular (.ps1 y .sh)
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
+pruebas/reportes.mjs      prueba de integración de la base de reportes (401): eventos y carga inicial
 semilla/
   semilla.ps1 · .sh       carga los datos de prueba (011): guardas, D, Keycloak, Obras → Finanzas → Materiales, fotos, resumen
   recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)
