@@ -45,6 +45,7 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 | `portal` | público, PKCE S256 | `http://localhost:4300/*` | portal del cliente |
 | `app-obra` | público, PKCE S256; *scope* opcional `offline_access` (101: con `scope=openid offline_access` el *refresh token* es de tipo `Offline`) | `exp://*`, `appobra://*` | app de obra |
 | `gateway` | confidencial, *service account* con `realm-management: view-users` y `view-realm` | — | el gateway lista usuarios por rol (`view-realm` lo exige Keycloak para `GET /roles/{rol}/users`) y lee usuarios. Secreto **solo de desarrollo**: `gateway-secreto-solo-desarrollo` |
+| `ia-reportes` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con el rol de realm `gerente` | — | 401: la carga inicial del servicio de IA pide su token con *client credentials* (trae `gerente`, `azp = ia-reportes` y la audiencia `plataforma-api`) y solo hace `GET` a Obras, Materiales y Finanzas. Secreto en `IA_REPORTES_CLIENT_SECRET` de `.env` (el realm lo toma al importarse: `"secret": "${IA_REPORTES_CLIENT_SECRET}"`); se copia al `.env` de IA. Si cambia, se recrea Keycloak |
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
 

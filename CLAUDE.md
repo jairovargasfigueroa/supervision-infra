@@ -66,7 +66,7 @@ docs/                     estructura, contratos y tareas por funcionalidad
 
 - **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»).
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
-- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm.
+- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`).
 - Las colas y enlaces de RabbitMQ siguen `docs/contratos/eventos.md` de la carpeta general (y las specs que agregan colas). Un enlace nuevo se agrega en `rabbitmq/definiciones.json`, en `docs/contratos.md` y en `pruebas/humo.mjs`.
 - Los cambios al realm se hacen en `keycloak/realm-supervision.json` y se comprueban con `./scripts/reiniciar-datos.ps1` (Keycloak solo importa un realm que no existe).
 - Los archivos montados en contenedores (`.sh`, `.conf`, `.json`, `.js`) van con fin de línea LF (`.gitattributes`).

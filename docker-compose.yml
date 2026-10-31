@@ -84,6 +84,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USUARIO:?falta KEYCLOAK_ADMIN_USUARIO en .env}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_CLAVE:?falta KEYCLOAK_ADMIN_CLAVE en .env}
       KC_HEALTH_ENABLED: "true"
+      # 401: el realm importado toma de aquí el secreto del cliente ia-reportes ("secret": "${IA_REPORTES_CLIENT_SECRET}")
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
       KC_HTTP_PORT: "8080"
       # El tema se lee del disco en cada petición: los cambios se ven sin reiniciar
       KC_SPI_THEME__CACHE_THEMES: "false"

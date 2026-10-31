@@ -11,6 +11,6 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 Agregadas al aprobar la spec (31/10/2026; diseño, «Carga inicial» e «Infra»):
 
-- [ ] Cliente confidencial `ia-reportes` en el realm (solo *service account*: `standardFlowEnabled`, `directAccessGrantsEnabled` e `implicitFlowEnabled` en `false`), mapper de audiencia `plataforma-api` y rol de realm `gerente` en su *service account*; secreto en `.env` (`.env.example` con el valor de ejemplo, nunca uno real en el commit); prueba de humo: el token *client credentials* trae `gerente` y la audiencia
+- [x] Cliente confidencial `ia-reportes` en el realm (solo *service account*: `standardFlowEnabled`, `directAccessGrantsEnabled` e `implicitFlowEnabled` en `false`), mapper de audiencia `plataforma-api` y rol de realm `gerente` en su *service account*; secreto en `.env` (`.env.example` con el valor de ejemplo, nunca uno real en el commit); prueba de humo: el token *client credentials* trae `gerente` y la audiencia
 - [ ] Servicio `ia-carga-inicial` en Docker Compose (misma imagen que `ia-api`, perfil propio, corre una vez y termina) sin romper `docker compose up` mientras la imagen no exista
 - [ ] `recargar` vacía `reportes_db` (`rpt_*`, `evento_aplicado` y `carga_inicial`; nunca el historial de Alembic) y al final indica correr la carga inicial

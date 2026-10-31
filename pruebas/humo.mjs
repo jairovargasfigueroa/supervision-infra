@@ -256,6 +256,43 @@ prueba('Realm: el cliente gateway obtiene token con audiencia plataforma-api y l
   afirmar(nombres.join() === 'demo1,residente1,residente2', `residentes: ${nombres}`);
 });
 
+prueba('Realm: el cliente ia-reportes (401) solo da client credentials y su token trae gerente y plataforma-api', async () => {
+  const pedir = (cuerpo) =>
+    fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(cuerpo),
+    });
+  afirmar(env.IA_REPORTES_CLIENT_SECRET, 'falta IA_REPORTES_CLIENT_SECRET en .env');
+  const respuesta = await pedir({
+    grant_type: 'client_credentials',
+    client_id: 'ia-reportes',
+    client_secret: env.IA_REPORTES_CLIENT_SECRET,
+  });
+  afirmar(respuesta.ok, `client_credentials de ia-reportes: ${respuesta.status} (¿se recreó Keycloak después de cambiar el secreto?)`);
+  const datos = leerToken((await respuesta.json()).access_token);
+  afirmar(datos.azp === 'ia-reportes', `azp: ${datos.azp}`);
+  afirmar([datos.aud].flat().includes('plataforma-api'), `aud: ${datos.aud}`);
+  afirmar(datos.realm_access?.roles.includes('gerente'), `roles: ${datos.realm_access?.roles}`);
+  afirmar(datos.iss === `${KEYCLOAK}/realms/supervision`, `iss: ${datos.iss}`);
+  // Sin el secreto correcto no hay token, y el cliente no sirve para que una persona inicie sesión
+  afirmar((await pedir({ grant_type: 'client_credentials', client_id: 'ia-reportes', client_secret: 'otro' })).status === 401, 'aceptó un secreto incorrecto');
+  const directo = await pedir({
+    grant_type: 'password',
+    client_id: 'ia-reportes',
+    client_secret: env.IA_REPORTES_CLIENT_SECRET,
+    username: 'gerente1',
+    password: 'Prueba123!',
+  });
+  afirmar(!directo.ok, `aceptó direct access grants: ${directo.status}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=ia-reportes');
+  afirmar(
+    cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
+      cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
+    'flujos del cliente ia-reportes',
+  );
+});
+
 prueba('Realm: demo1 inicia sesión en el ERP con PKCE y el token trae sub, audiencia, azp y roles', async () => {
   const datos = leerToken(await obtenerTokenUsuario('demo1'));
   afirmar(datos.sub === 'a0000000-0000-4000-8000-000000000009', `sub: ${datos.sub}`);
