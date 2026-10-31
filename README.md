@@ -54,7 +54,7 @@ Variables que necesita Sincronización en su `.env` (copia de su `.env.example`;
 
 ## Probar la app en el celular
 
-La app usa `localhost` (Keycloak 8080, Obras 8081, Materiales 8082, Metro 8090) y el celular Android llega a la computadora con `adb reverse`: así el token sale con el mismo emisor que validan los servicios.
+La app usa `localhost` (Keycloak 8080, Obras 8081, Materiales 8082, Sincronización 8084, Metro 8090) y el celular Android llega a la computadora con `adb reverse`: así el token sale con el mismo emisor que validan los servicios.
 
 1. En el celular: activa las opciones de desarrollador y la **depuración USB** (o la depuración inalámbrica y empareja con `adb pair`).
 2. Conecta el cable y acepta el aviso en el celular; `adb devices` debe mostrarlo.

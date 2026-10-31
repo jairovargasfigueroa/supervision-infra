@@ -22,7 +22,7 @@ cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
 ./scripts/mongo-local-replica.ps1 # una vez, como administrador: MongoDB instalado en Windows como replica set rs0
-./scripts/celular.ps1             # adb reverse para probar la app en el celular (8080, 8081, 8082 y Metro 8090)
+./scripts/celular.ps1             # adb reverse para probar la app en el celular (8080, 8081, 8082, 8084 y Metro 8090)
 node pruebas/humo.mjs             # comprueba realm, colas y enlaces contra lo que está corriendo
 node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (008; con los servicios corriendo)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
