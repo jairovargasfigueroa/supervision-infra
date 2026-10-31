@@ -21,7 +21,9 @@ Qué va en cada carpeta y cómo se agrega algo. Lo que corre, con versiones y pu
 | `keycloak/temas/supervision/login/` | Tema de inicio de sesión: `theme.properties` (extiende `keycloak.v2`), CSS y logo | — |
 | `scripts/` | Un `.ps1` y un `.sh` por acción, con el mismo comportamiento | Script nuevo → en los dos lenguajes y en el `CLAUDE.md` |
 | `semilla/semilla.ps1` · `.sh` | Carga los datos de prueba (011): guardas, piezas que responden, D en `SEMILLA_FECHA`, usuarios de Keycloak, Obras → Finanzas → Materiales (cada uno con su comando), fotos al bucket y resumen | Una capa que amplía la semilla agrega su paso en `comun.ps1` y `comun.sh` |
-| `semilla/recargar.ps1` · `.sh` | Vacía y vuelve a cargar (pide confirmación; `-Si` / `--si`) | Ídem |
+| `semilla/recargar.ps1` · `.sh` | Vacía y vuelve a cargar (pide confirmación; `-Si` / `--si`); también vacía `reportes_db` (401) y al final pide correr la carga inicial | Ídem |
+| `postgres/vaciar-reportes.sql` | 401: vacía las tablas del modelo de lectura que existan (`rpt_*`, `evento_aplicado`, `carga_inicial`), nunca `alembic_version`; lo corre `recargar` con `psql-cli` | Tabla nueva del modelo de lectura que no empiece con `rpt_` → aquí |
+| `docker-compose.yml` → `psql-cli` | `postgres:17` (perfil `herramientas`) con `psql` contra `reportes_db` como `ia` en `host.docker.internal:5433`; herramienta de una sola vez como `s3-cli` | Solo la llaman los scripts de `semilla/` |
 | `semilla/comun.ps1` · `comun.sh` | Los pasos que comparten `semilla` y `recargar`, uno por lenguaje con el mismo comportamiento | Cambiar los dos a la vez |
 | `semilla/plataforma.mjs` | Lo que se habla por HTTP o TCP (fecha D, piezas que responden, usuarios de Keycloak, colas de RabbitMQ), común a los dos lenguajes; Node 24 sin dependencias | — |
 | `semilla/fotos/` | `generar-fotos.ps1` (System.Drawing) y las 10 fotos generadas en `{obraId}/{fotoId}.jpg` (sección 10 de `docs/datos-prueba.md`) | Foto nueva → en el script, se vuelve a correr y se sube la imagen |

@@ -156,6 +156,35 @@ function Ejecutar-S3([string[]]$Argumentos) {
     return $salida
 }
 
+# psql en el contenedor psql-cli (perfil herramientas), contra reportes_db con el usuario ia (401); devuelve la salida
+function Ejecutar-Psql([string[]]$Argumentos) {
+    Push-Location $Infra
+    $anterior = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $salida = & docker compose --profile herramientas run --rm --no-TTY psql-cli @Argumentos 2>&1 |
+            ForEach-Object { Linea $_ } | Where-Object { $_ -notmatch '^\s*Container .*(Creat|Start|Stopp|Remov)' }
+    } finally {
+        $ErrorActionPreference = $anterior
+        Pop-Location
+    }
+    return $salida
+}
+
+# 401: vacía el modelo de lectura (rpt_*, evento_aplicado, carga_inicial). Si reportes_db no responde (por ejemplo,
+# todavía no se creó para el servicio de IA), avisa y sigue: no hay nada que vaciar ahí. Devuelve si la vació.
+function Vaciar-Reportes {
+    $salida = Ejecutar-Psql @('-f', '/vaciar-reportes.sql')
+    if ($LASTEXITCODE -eq 0) {
+        $salida | Where-Object { $_ -match 'NOTICE:\s*(.*)$' } | ForEach-Object { Write-Host "ok       $($Matches[1])" }
+        return $true
+    }
+    $salida | ForEach-Object { Write-Host $_ }
+    Aviso ('No se pudo vaciar reportes_db (salida de arriba). Si el servicio de IA todavía no tiene su base, ignóralo; ' +
+        'si la tiene, revisa POSTGRES_IA_CLAVE en infra/.env y vacíala antes de la carga inicial.')
+    return $false
+}
+
 function Contar-Fotos([string]$Bucket) {
     $lista = Ejecutar-S3 @('s3', 'ls', "s3://$Bucket/fotos/", '--recursive')
     if ($LASTEXITCODE -ne 0) { Detener "No se pudo listar s3://$Bucket/fotos/:`n$($lista -join "`n")" }

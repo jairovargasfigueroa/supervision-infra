@@ -43,6 +43,7 @@ docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nom
 .env.example              variables (contraseñas y claves vacías, SEMILLA_PERMITIDA, carpetas de los servicios, bucket S3)
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)
+postgres/vaciar-reportes.sql vacía el modelo de lectura en recargar (401; lo corre el servicio psql-cli)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
 ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
 rabbitmq/
@@ -56,7 +57,7 @@ pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
 semilla/
   semilla.ps1 · .sh       carga los datos de prueba (011): guardas, D, Keycloak, Obras → Finanzas → Materiales, fotos, resumen
-  recargar.ps1 · .sh      vacía (servicios, colas, bucket) y vuelve a cargar
+  recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)
   comun.ps1 · comun.sh    pasos comunes de los dos scripts (uno por lenguaje, mismo comportamiento)
   plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg

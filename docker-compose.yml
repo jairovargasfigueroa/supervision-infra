@@ -190,6 +190,27 @@ services:
     command: ["--version"]
     restart: "no"
 
+  # 401 · psql para vaciar reportes_db en "recargar" (usuario ia). Herramienta de una sola vez, como s3-cli:
+  # docker compose --profile herramientas run --rm psql-cli -f /vaciar-reportes.sql
+  # Llega al PostgreSQL de la máquina (instalación local o perfil bases) por host.docker.internal:5433.
+  psql-cli:
+    image: postgres:17
+    profiles: ["herramientas"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PGHOST: host.docker.internal
+      PGPORT: "5433"
+      PGUSER: ia
+      PGDATABASE: reportes_db
+      PGPASSWORD: ${POSTGRES_IA_CLAVE}
+    volumes:
+      - ./postgres/vaciar-reportes.sql:/vaciar-reportes.sql:ro
+    entrypoint: ["psql", "-v", "ON_ERROR_STOP=1", "-X", "-q"]
+    # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--version"]
+    restart: "no"
+
   # 401 · API del servicio de IA (puerto 8085). Aplica las migraciones de reportes_db (alembic) antes de atender.
   ia-api:
     <<: *ia
