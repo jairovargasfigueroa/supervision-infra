@@ -28,6 +28,7 @@
   "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 36000,
   "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
   "roles": {
     "realm": [
       {
@@ -151,6 +152,8 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "exp://*##appobra://*"
       },
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "basic", "email"],
+      "optionalClientScopes": ["offline_access"],
       "protocolMappers": [
         {
           "name": "audiencia plataforma-api",

@@ -1,5 +1,5 @@
 # Entorno de desarrollo. Versiones y puertos: docs/entorno-local.md de supervision-docs.
-# Sin perfil: RabbitMQ y Keycloak. Con --profile bases: también PostgreSQL y MongoDB.
+# Sin perfil: RabbitMQ, Keycloak y DynamoDB Local. Con --profile bases: también PostgreSQL y MongoDB.
 name: supervision
 
 services:
@@ -114,6 +114,27 @@ services:
     command: ["mongosh", "--quiet", "mongodb://mongo:27017/?directConnection=true", "/iniciar-replica.js"]
     restart: "no"
 
+  # DynamoDB Local para el servicio de Sincronización (101). -sharedDb: una sola base para cualquier
+  # credencial y región (las pruebas y el servicio ven las mismas tablas). Las tablas las crea
+  # Sincronización al iniciar con DYNAMODB_CREAR_TABLAS=true.
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    working_dir: /home/dynamodblocal
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    # El volumen se crea con dueño root: el usuario de la imagen (dynamodblocal) no podría escribir en él
+    user: root
+    ports:
+      - "8000:8000"
+    volumes:
+      - datos-dynamodb:/home/dynamodblocal/data
+    healthcheck:
+      # Sin credenciales responde 400 (MissingAuthenticationToken): basta con que conteste
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   # AWS CLI para subir y borrar las fotos de los datos de prueba (011) en el bucket S3 de desarrollo.
   # Herramienta de una sola vez: se usa con "docker compose --profile herramientas run --rm s3-cli s3 ...";
   # los scripts de semilla/ rechazan cualquier bucket que no empiece con supervision-dev-.
@@ -135,3 +156,4 @@ volumes:
   datos-rabbitmq:
   datos-postgres:
   datos-mongo:
+  datos-dynamodb:

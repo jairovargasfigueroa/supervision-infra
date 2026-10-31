@@ -3,7 +3,7 @@
 cd "$(dirname "$0")/.."
 docker compose --profile '*' ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
 echo
-servicios="Obras=http://localhost:8081/salud Materiales=http://localhost:8082/salud Finanzas=http://localhost:8083/salud"
+servicios="Obras=http://localhost:8081/salud Materiales=http://localhost:8082/salud Finanzas=http://localhost:8083/salud Sincronizacion=http://localhost:8084/salud"
 for s in $servicios; do
   nombre=${s%%=*}; url=${s#*=}
   if respuesta=$(curl -fsS --max-time 3 "$url" 2>/dev/null) && echo "$respuesta" | grep -q '"ok"'; then
