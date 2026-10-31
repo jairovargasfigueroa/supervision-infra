@@ -35,14 +35,14 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 
 - Roles del realm: `admin`, `residente`, `gerente`, `maestro`, `almacenero`, `cliente`.
 - Todos los tokens llevan la audiencia `plataforma-api` (mapper de audiencia en cada cliente).
-- Token de acceso: 5 minutos. Sesión SSO: 10 horas. Idioma: solo español. Tema de inicio de sesión: `supervision`.
+- Token de acceso: 5 minutos. Sesión SSO: 10 horas. Sesión *offline*: vale mientras no pase 30 días sin usarse (`offlineSessionIdleTimeout` 2592000 s, 101). Idioma: solo español. Tema de inicio de sesión: `supervision`.
 - Contraseñas: mínimo 8 caracteres, 1 mayúscula, 1 número, distinta del usuario. Bloqueo temporal tras 5 intentos fallidos.
 
 | Cliente | Tipo | Redirecciones | Uso |
 |---|---|---|---|
 | `erp` | público, PKCE S256 | `http://localhost:4200/*` | shell y microfrontends |
 | `portal` | público, PKCE S256 | `http://localhost:4300/*` | portal del cliente |
-| `app-obra` | público, PKCE S256 | `exp://*`, `appobra://*` | app de obra |
+| `app-obra` | público, PKCE S256; *scope* opcional `offline_access` (101: con `scope=openid offline_access` el *refresh token* es de tipo `Offline`) | `exp://*`, `appobra://*` | app de obra |
 | `gateway` | confidencial, *service account* con `realm-management: view-users` y `view-realm` | — | el gateway lista usuarios por rol (`view-realm` lo exige Keycloak para `GET /roles/{rol}/users`) y lee usuarios. Secreto **solo de desarrollo**: `gateway-secreto-solo-desarrollo` |
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
