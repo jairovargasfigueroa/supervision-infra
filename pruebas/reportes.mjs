@@ -2,19 +2,24 @@
 //   1. Eventos: registra una obra (con zona) por Obras, el residente elabora y presenta la planilla del mes, el
 //      cliente la aprueba (saga 008) y comprueba en reportes_db rpt_obra_resumen, rpt_planilla y rpt_cobro.
 //   2. Carga inicial (con --carga): corre ia-carga-inicial dos veces con el cliente ia-reportes real y comprueba que
-//      las obras de los datos de prueba (011) están en reportes_db con el mismo avance que Obras, y que la segunda
-//      corrida no duplica filas ni suma dos veces el consumo.
+//      las obras de los datos de prueba (011) están en reportes_db con el mismo avance que Obras y con tantas
+//      planillas, cobros y movimientos como tienen en ese momento Obras, Finanzas y Materiales (no números fijos: una
+//      prueba manual puede haber aprobado otra planilla), y que la segunda corrida no duplica filas ni suma dos veces
+//      el consumo.
 // Necesita: Obras, Materiales y Finanzas (con su consumidor y su publicador) y el servicio de IA (ia-worker) corriendo;
 // reportes_db migrada; para --carga, los datos de prueba cargados (./semilla/semilla.*). Lee reportes_db con el
 // servicio psql-cli (perfil herramientas, solo SELECT). Crea datos («Prueba reportes 401 …»): solo en desarrollo.
 // Uso: node pruebas/reportes.mjs [--carga] [--solo-carga]
-//      (variables opcionales: OBRAS_URL; CARGA_INICIAL = comando de la carga, por defecto el servicio del Compose)
+//      (variables opcionales: OBRAS_URL, MATERIALES_URL, FINANZAS_URL; CARGA_INICIAL = comando de la carga, por
+//      defecto el servicio del Compose)
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { obtenerTokenUsuario } from './token-usuario.mjs';
 
 const INFRA = fileURLToPath(new URL('..', import.meta.url));
 const OBRAS = process.env.OBRAS_URL ?? 'http://localhost:8081';
+const MATERIALES = process.env.MATERIALES_URL ?? 'http://localhost:8082';
+const FINANZAS = process.env.FINANZAS_URL ?? 'http://localhost:8083';
 const PORTAL = 'http://localhost:4300/';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const OBRAS_SEMILLA = [1, 2, 3].map((n) => `b0000000-0000-4000-8000-00000000000${n}`);
@@ -29,8 +34,8 @@ function comprobar(nombre, ok, detalle = '') {
 const esperar = (ms) => new Promise((listo) => setTimeout(listo, ms));
 const numero = (valor) => (valor === null || valor === undefined || valor === '' ? null : Number(valor));
 
-async function rest(metodo, ruta, token, cuerpo) {
-  const respuesta = await fetch(OBRAS + ruta, {
+async function rest(metodo, ruta, token, cuerpo, base = OBRAS) {
+  const respuesta = await fetch(base + ruta, {
     method: metodo,
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
@@ -211,15 +216,52 @@ function fotoDeLaSemilla() {
   return fila;
 }
 
+/**
+ * Lo que la carga inicial debe traer de las obras de la semilla, leído de los dueños en este momento (criterio 17):
+ * planillas APROBADA u OBSERVADA, más las de otro estado que tienen observación (se cargan como OBSERVADA, diseño,
+ * «Qué escribe y cómo», paso 3); cobros de Finanzas; movimientos de Materiales (404 OBRA_NO_ENCONTRADA = ninguno).
+ */
+async function esperadoDeLosServicios() {
+  const esperado = { planillas: 0, cobros: 0, movimientos: 0 };
+  for (const id of OBRAS_SEMILLA) {
+    const planillas = await rest('GET', `/obras/${id}/planillas`, gerente);
+    if (planillas.estado !== 200) throw new Error(`Obras GET /obras/${id}/planillas: ${planillas.estado}`);
+    for (const planilla of planillas.json) {
+      if (['APROBADA', 'OBSERVADA'].includes(planilla.estado)) {
+        esperado.planillas++;
+        continue;
+      }
+      const detalle = await rest('GET', `/planillas/${planilla.id}`, gerente);
+      if (detalle.estado !== 200) throw new Error(`Obras GET /planillas/${planilla.id}: ${detalle.estado}`);
+      if (detalle.json.observacion !== null && detalle.json.observacion !== undefined) esperado.planillas++;
+    }
+    const cobros = await rest('GET', `/cobros?obraId=${id}&pagina=1&tamano=1`, gerente, undefined, FINANZAS);
+    if (cobros.estado !== 200) throw new Error(`Finanzas GET /cobros?obraId=${id}: ${cobros.estado}`);
+    esperado.cobros += cobros.json.total;
+    const movimientos = await rest('GET', `/obras/${id}/movimientos?pagina=1&tamano=1`, gerente, undefined, MATERIALES);
+    if (movimientos.estado === 404 && movimientos.json?.codigo === 'OBRA_NO_ENCONTRADA') continue;
+    if (movimientos.estado !== 200) throw new Error(`Materiales GET /obras/${id}/movimientos: ${movimientos.estado}`);
+    esperado.movimientos += movimientos.json.total;
+  }
+  return esperado;
+}
+
 if (conCarga) {
   const primera = correrCarga();
   comprobar('la carga inicial termina con código 0', primera.codigo === 0, primera.codigo === 0 ? '' : primera.texto.slice(-800));
   const despues = fotoDeLaSemilla();
   comprobar('carga_inicial TERMINADA', despues?.ultimaCarga === 'TERMINADA', despues?.ultimaCarga);
+  let esperado = null;
+  try {
+    esperado = await esperadoDeLosServicios();
+  } catch (error) {
+    comprobar('leer de Obras, Finanzas y Materiales lo que deben tener las obras de la semilla', false, error.message);
+  }
   comprobar(
-    'las 3 obras de los datos de prueba, con sus cobros (3) y movimientos (67) (criterio 17)',
-    numero(despues?.obras) === 3 && numero(despues?.cobros) === 3 && numero(despues?.movimientos) === 67,
-    JSON.stringify(despues),
+    'las 3 obras de los datos de prueba, con las planillas, cobros y movimientos que tienen sus servicios (criterio 17)',
+    esperado !== null && numero(despues?.obras) === 3 && numero(despues?.planillas) === esperado.planillas &&
+      numero(despues?.cobros) === esperado.cobros && numero(despues?.movimientos) === esperado.movimientos,
+    `IA ${JSON.stringify({ planillas: despues?.planillas, cobros: despues?.cobros, movimientos: despues?.movimientos })} · servicios ${JSON.stringify(esperado)}`,
   );
 
   const obras = (await rest('GET', '/obras', gerente)).json ?? [];
