@@ -5,4 +5,4 @@ Requisitos y diseño: `docs/specs/101-registro-sin-senal/` de la carpeta que agr
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 - [x] Agregar DynamoDB Local al Docker Compose (imagen `amazon/dynamodb-local` con versión fija, puerto `8000`, `-sharedDb`, volumen de datos)
-- [ ] Documentar en el README de infra cómo listar las tablas (`aws dynamodb list-tables --endpoint-url http://localhost:8000`) y las variables que necesita Sincronización
+- [x] Documentar en el README de infra cómo listar las tablas (`aws dynamodb list-tables --endpoint-url http://localhost:8000`) y las variables que necesita Sincronización

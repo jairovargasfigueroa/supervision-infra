@@ -1,6 +1,6 @@
 # supervision-infra
 
-Entorno de desarrollo de la Plataforma de supervisión de obras: Docker Compose con RabbitMQ y Keycloak y, como perfil opcional, PostgreSQL y MongoDB.
+Entorno de desarrollo de la Plataforma de supervisión de obras: Docker Compose con RabbitMQ, Keycloak y DynamoDB Local y, como perfil opcional, PostgreSQL y MongoDB.
 
 ## Primera vez
 
@@ -19,10 +19,38 @@ En Linux y macOS: `cp .env.example .env`, `./scripts/levantar.sh [--perfil bases
 | Keycloak | http://localhost:8080 (panel: `/admin`, usuario `KEYCLOAK_ADMIN_USUARIO`) |
 | PostgreSQL (perfil `bases`) | `localhost:5433` |
 | MongoDB (perfil `bases`) | `localhost:27017` |
+| DynamoDB Local (Sincronización, 101) | http://localhost:8000 |
 
 Si ya tienes PostgreSQL en el 5433 o MongoDB en el 27017 instalados en la máquina, **no uses el perfil `bases`**: los puertos chocan. Tu MongoDB instalado debe ser *replica set* (lo necesitan las transacciones de Materiales): ejecuta una vez, en PowerShell como administrador, `./scripts/mongo-local-replica.ps1` (en Linux o macOS, `sudo ./scripts/mongo-local-replica.sh`). La URI queda `mongodb://localhost:27017/materiales_db?replicaSet=rs0`.
 
 Versiones, variables de cada proyecto y orden para levantar todo: `docs/entorno-local.md` del repo `supervision-docs`. Detalle de este repo: `CLAUDE.md` y `docs/`.
+
+## DynamoDB Local (101)
+
+Base del servicio de Sincronización (`services/sincronizacion`), con `-sharedDb` y el volumen `datos-dynamodb` (los datos quedan al reiniciar; `./scripts/reiniciar-datos.ps1` los borra). Para levantar solo esta pieza: `docker compose up -d dynamodb`. Las tablas (`operacion_procesada` y `estado_dispositivo`) las crea Sincronización al iniciar con `DYNAMODB_CREAR_TABLAS=true`.
+
+Listar las tablas (DynamoDB Local acepta cualquier clave; la región no importa con `-sharedDb`):
+
+```powershell
+# con AWS CLI instalado
+$env:AWS_ACCESS_KEY_ID = 'local'; $env:AWS_SECRET_ACCESS_KEY = 'local'; $env:AWS_DEFAULT_REGION = 'sa-east-1'
+aws dynamodb list-tables --endpoint-url http://localhost:8000
+# sin instalar nada, con la imagen de AWS CLI del perfil herramientas
+docker compose --profile herramientas run --rm -e AWS_ACCESS_KEY_ID=local -e AWS_SECRET_ACCESS_KEY=local s3-cli dynamodb list-tables --endpoint-url http://dynamodb:8000
+```
+
+Variables que necesita Sincronización en su `.env` (copia de su `.env.example`; el servicio corre fuera de Docker):
+
+| Variable | Valor en desarrollo |
+|---|---|
+| `PORT` | `8084` |
+| `KEYCLOAK_URL` / `KEYCLOAK_REALM` / `AUDIENCIA` | `http://localhost:8080` / `supervision` / `plataforma-api` |
+| `OBRAS_URL` / `MATERIALES_URL` | `http://localhost:8081` / `http://localhost:8082` |
+| `DYNAMODB_ENDPOINT` | `http://localhost:8000` (vacío en AWS) |
+| `AWS_REGION` | `sa-east-1` |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `local` / `local` (valores de prueba: DynamoDB Local acepta cualquiera) |
+| `DYNAMODB_CREAR_TABLAS` | `true` (solo en desarrollo) |
+| `TIEMPO_MAXIMO_LLAMADA_MS` / `TIEMPO_MAXIMO_LOTE_MS` | `5000` / `20000` |
 
 ## Probar la app en el celular
 
