@@ -18,6 +18,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ```sh
 cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/levantar.ps1            # RabbitMQ, Keycloak y DynamoDB Local (agrega -Perfil bases para PostgreSQL y MongoDB)
+docker compose --profile ia up -d --build   # 401: ia-api (8085) e ia-worker desde la imagen de services/ia (opcional)
 ./scripts/estado.ps1              # qué contenedor está sano y GET /salud de cada servicio que corre
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
@@ -42,6 +43,7 @@ docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nom
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
+ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
   iniciar.sh              importa las definiciones y crea los usuarios por servicio desde .env (API del panel)

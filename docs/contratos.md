@@ -10,6 +10,7 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | Keycloak | 8080 (salud en el puerto de gestión 9000, solo dentro del contenedor) |
 | PostgreSQL (perfil `bases`) | 5433 |
 | MongoDB (perfil `bases`) | 27017 |
+| Servicio de IA, `ia-api` (perfil `ia`, 401) | 8085 |
 
 ## RabbitMQ: usuarios
 

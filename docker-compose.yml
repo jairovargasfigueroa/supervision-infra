@@ -1,6 +1,38 @@
 # Entorno de desarrollo. Versiones y puertos: docs/entorno-local.md de supervision-docs.
 # Sin perfil: RabbitMQ, Keycloak y DynamoDB Local. Con --profile bases: también PostgreSQL y MongoDB.
+# Con --profile ia: ia-api e ia-worker construidos desde services/ia (401). Opcional: también se corren con uv.
 name: supervision
+
+# 401 · Servicio de IA en contenedor: una sola imagen para sus tres procesos (Dockerfile de services/ia).
+# PostgreSQL (5433), MongoDB y Obras, Materiales y Finanzas se alcanzan en la máquina (host.docker.internal), como
+# cuando se corren sin Docker; RabbitMQ y Keycloak, dentro del Compose. Keycloak se alcanza como localhost:8080
+# gracias a ia/reenviar-keycloak.py, para que el emisor de los tokens sea el mismo que validan los demás servicios.
+x-ia: &ia
+  build: ${IA_DIR:-../services/ia}
+  image: supervision-ia:dev
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ./ia/reenviar-keycloak.py:/reenviar-keycloak.py:ro
+
+x-ia-entorno: &ia-entorno
+  IA_ENTORNO: desarrollo
+  IA_PUERTO: "8085"
+  IA_REPORTES_DB_URL: postgresql+psycopg://ia:${POSTGRES_IA_CLAVE}@host.docker.internal:5433/reportes_db
+  IA_MONGO_URL: mongodb://host.docker.internal:27017/?directConnection=true
+  IA_MONGO_DB: ia_db
+  IA_RABBITMQ_URL: amqp://ia:${RABBITMQ_IA_CLAVE}@rabbitmq:5672/
+  IA_KEYCLOAK_ISSUER: http://localhost:8080/realms/supervision
+  IA_AUDIENCIA: plataforma-api
+  IA_ZONA_HORARIA: America/La_Paz
+  # El secreto de ia-reportes solo lo recibe ia-carga-inicial (401, «Token»)
+  IA_REPORTES_CLIENT_SECRET: ""
+
+# Arranca el reenvío de localhost:8080 a Keycloak, espera a que escuche y ejecuta el proceso del servicio
+x-ia-con-keycloak: &ia-con-keycloak >-
+  python /reenviar-keycloak.py &
+  until python -c "import socket; socket.create_connection(('127.0.0.1', 8080), 1)" 2>/dev/null; do sleep 0.2; done;
+  exec "$$@"
 
 services:
   rabbitmq:
@@ -155,6 +187,41 @@ services:
     # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
     command: ["--version"]
     restart: "no"
+
+  # 401 · API del servicio de IA (puerto 8085). Aplica las migraciones de reportes_db (alembic) antes de atender.
+  ia-api:
+    <<: *ia
+    profiles: ["ia"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-api"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    ports:
+      - "8085:8085"
+    environment:
+      <<: *ia-entorno
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/salud', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # 401 · Consumidor de la cola ia y tareas programadas. Espera a ia-api, que deja reportes_db migrada.
+  ia-worker:
+    <<: *ia
+    profiles: ["ia"]
+    command: ["ia-worker"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    environment:
+      <<: *ia-entorno
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      ia-api:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   datos-rabbitmq:
