@@ -47,7 +47,7 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
 
-Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`.
+Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`. Desde otro script, `obtenerTokensUsuario(usuario, { clientId, redirectUri, scope })` devuelve la respuesta completa (por ejemplo, con `scope: 'openid offline_access'` y `clientId: 'app-obra'`, el *refresh token* `Offline` de la 101).
 
 ## PostgreSQL
 

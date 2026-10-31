@@ -2,7 +2,7 @@
 // Lee las credenciales de .env. Sale con código 1 si alguna comprobación falla.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { leerToken, obtenerTokenUsuario } from './token-usuario.mjs';
+import { leerToken, obtenerTokensUsuario, obtenerTokenUsuario } from './token-usuario.mjs';
 
 const env = Object.fromEntries(
   readFileSync(fileURLToPath(new URL('../.env', import.meta.url)), 'utf8')
@@ -13,6 +13,7 @@ const env = Object.fromEntries(
 
 const RABBITMQ = 'http://localhost:15672/api';
 const KEYCLOAK = 'http://localhost:8080';
+const DYNAMODB = 'http://localhost:8000';
 const SERVICIOS_RABBITMQ = ['obras', 'materiales', 'finanzas', 'ia', 'notificaciones'];
 
 const autorizacionRabbit =
@@ -239,6 +240,49 @@ prueba('Realm: la pantalla de inicio de sesión está en español y con el tema 
   afirmar(estilos, 'no usa el tema supervision');
   const logo = await fetch(`${KEYCLOAK}${estilos.replace('css/supervision.css', 'img/logo.svg')}`);
   afirmar(logo.ok, `logo: ${logo.status}`);
+});
+
+prueba('Realm: sesión offline de 30 días y scope offline_access en app-obra (101)', async () => {
+  const realm = await adminKeycloak('');
+  afirmar(realm.offlineSessionIdleTimeout === 2592000, `offlineSessionIdleTimeout: ${realm.offlineSessionIdleTimeout}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=app-obra');
+  const opcionales = (await adminKeycloak(`/clients/${cliente.id}/optional-client-scopes`)).map((s) => s.name);
+  afirmar(opcionales.includes('offline_access'), `scopes opcionales de app-obra: ${opcionales}`);
+  const predeterminados = (await adminKeycloak(`/clients/${cliente.id}/default-client-scopes`)).map((s) => s.name);
+  afirmar(['roles', 'profile', 'email'].every((s) => predeterminados.includes(s)), `scopes de app-obra: ${predeterminados}`);
+});
+
+prueba('Realm: almacenero1 en la app con offline_access recibe un refresh token Offline con su rol', async () => {
+  const tokens = await obtenerTokensUsuario('almacenero1', {
+    clientId: 'app-obra',
+    redirectUri: 'appobra://callback',
+    scope: 'openid offline_access',
+  });
+  afirmar(tokens.scope.split(' ').includes('offline_access'), `scope: ${tokens.scope}`);
+  const refresco = leerToken(tokens.refresh_token);
+  afirmar(refresco.typ === 'Offline', `refresh token de tipo ${refresco.typ}`);
+  afirmar(tokens.refresh_expires_in === 2592000, `refresh_expires_in: ${tokens.refresh_expires_in}`);
+  const acceso = leerToken(tokens.access_token);
+  afirmar(acceso.azp === 'app-obra' && [acceso.aud].flat().includes('plataforma-api'), 'azp o audiencia');
+  afirmar(acceso.realm_access?.roles.includes('almacenero'), 'sin el rol almacenero');
+});
+
+// --- DynamoDB Local (101) ---
+prueba('DynamoDB Local: responde ListTables en el 8000', async () => {
+  // DynamoDB Local acepta cualquier credencial, pero exige un encabezado Authorization con forma de firma
+  const respuesta = await fetch(DYNAMODB, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-amz-json-1.0',
+      'x-amz-target': 'DynamoDB_20120810.ListTables',
+      authorization:
+        'AWS4-HMAC-SHA256 Credential=local/20260101/sa-east-1/dynamodb/aws4_request, SignedHeaders=host, Signature=0',
+    },
+    body: '{}',
+  });
+  afirmar(respuesta.ok, `ListTables: ${respuesta.status}`);
+  const { TableNames } = await respuesta.json();
+  afirmar(Array.isArray(TableNames), 'respuesta sin TableNames');
 });
 
 let fallidas = 0;
