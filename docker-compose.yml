@@ -225,6 +225,33 @@ services:
     command: ["--version"]
     restart: "no"
 
+  # 503 (y 502) · Modelo de lenguaje local para ia-api e ia-worker (IA_OLLAMA_URL=http://ollama:11434). Perfil propio:
+  # solo para quien usa IA_LLM_PROVEEDOR=ollama. Los modelos quedan en el volumen datos-ollama (qwen3:8b, unos 5 GB):
+  # se descargan una vez con scripts/descargar-modelo.*. El puerto se publica solo en 127.0.0.1 (para el servicio de IA
+  # corrido con uv en la máquina); nunca fuera de ella. GPU NVIDIA opcional: docker-compose.gpu.yml (README).
+  ollama:
+    image: ollama/ollama:0.40.4
+    profiles: ["ollama"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    environment:
+      # Caché de contexto en 8 bits con flash attention: el contexto de 16384 de la 503 cabe en menos memoria
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: q8_0
+      # Un solo modelo cargado y una petición a la vez (la 502 ejecuta un agente a la vez)
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      # El modelo queda en memoria 30 minutos después del último uso
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - datos-ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
   # 401 · API del servicio de IA (puerto 8085). Aplica las migraciones de reportes_db (alembic) antes de atender.
   ia-api:
     <<: *ia
@@ -286,3 +313,4 @@ volumes:
   datos-postgres:
   datos-mongo:
   datos-dynamodb:
+  datos-ollama:

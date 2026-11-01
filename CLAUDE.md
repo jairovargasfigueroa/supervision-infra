@@ -9,7 +9,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ## Stack
 
 - Docker Compose (Docker Desktop con WSL 2)
-- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo)
+- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo), `ollama/ollama:0.40.4` (perfil `ollama`, 503: modelo de lenguaje local; GPU opcional con `docker-compose.gpu.yml`)
 - Scripts en PowerShell (`.ps1`, Windows) y Bash (`.sh`, Linux y macOS) que hacen lo mismo
 - Pruebas de humo con Node 24 (`node pruebas/humo.mjs`, sin dependencias)
 
@@ -20,6 +20,7 @@ cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/levantar.ps1            # RabbitMQ, Keycloak y DynamoDB Local (agrega -Perfil bases para PostgreSQL y MongoDB)
 docker compose --profile ia up -d --build   # 401: ia-api (8085) e ia-worker desde la imagen de services/ia (opcional)
 docker compose --profile ia-carga run --rm ia-carga-inicial   # 401: carga inicial de reportes_db (una vez, y después de recargar)
+docker compose --profile ollama up -d ollama   # 503: modelo de lenguaje local (con GPU: agrega -f docker-compose.yml -f docker-compose.gpu.yml)
 ./scripts/estado.ps1              # qué contenedor está sano y GET /salud de cada servicio que corre
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
@@ -41,6 +42,7 @@ En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
 
 ```
 docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nombre
+docker-compose.gpu.yml    503: opcional, da la GPU NVIDIA al servicio ollama
 .env.example              variables (contraseñas y claves vacías, SEMILLA_PERMITIDA, carpetas de los servicios, bucket S3)
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)

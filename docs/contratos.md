@@ -11,6 +11,7 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | PostgreSQL (perfil `bases`) | 5433 |
 | MongoDB (perfil `bases`) | 27017 |
 | Servicio de IA, `ia-api` (perfil `ia`, 401) | 8085 |
+| Ollama (perfil `ollama`, 503) | 11434, solo en `127.0.0.1` (en la red de Compose, `http://ollama:11434`) |
 
 ## RabbitMQ: usuarios
 

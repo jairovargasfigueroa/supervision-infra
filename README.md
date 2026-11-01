@@ -32,6 +32,21 @@ docker compose --profile ia stop ia-api ia-worker
 
 Construye la imagen de `services/ia` (`IA_DIR` de `.env`) y la usa para los dos procesos. No usa el `.env` de IA: sus variables están en `docker-compose.yml` (`x-ia-entorno`) con las claves de este `.env` (`POSTGRES_IA_CLAVE`, `RABBITMQ_IA_CLAVE`). PostgreSQL (5433) y MongoDB se buscan en la máquina (`host.docker.internal`), así que sirven tanto la instalación local como el perfil `bases`. `ia-api` aplica las migraciones de `reportes_db` antes de atender. Desde la 503 también reciben `IA_REPORTES_DB_URL_LECTURA` (rol `ia_reportes_lector`, `POSTGRES_IA_LECTOR_CLAVE`) y el modelo de lenguaje: `IA_LLM_PROVEEDOR` (`ollama` por defecto, o `anthropic`), `IA_LLM_MODELO` (vacío: `qwen3:8b` u `claude-sonnet-5-5`), `IA_OLLAMA_URL` (por defecto `http://ollama:11434`, el servicio `ollama` de la red de Compose) e `IA_ANTHROPIC_API_KEY` (solo en tu `.env`; vacía en `.env.example`). Para desarrollar el servicio, también se puede correr sin Docker (`services/ia`, con `uv`); no levantes los dos a la vez (los dos usan el 8085 y la cola `ia`).
 
+### Modelo de lenguaje local: Ollama (503 y 502, opcional)
+
+El servicio de IA usa por defecto `IA_LLM_PROVEEDOR=ollama`: el servicio `ollama` (imagen `ollama/ollama:0.40.4`, perfil `ollama`, volumen `datos-ollama`) con el modelo `qwen3:8b` (unos 5 GB). Solo hace falta si usas Ollama; con `IA_LLM_PROVEEDOR=anthropic` y tu `IA_ANTHROPIC_API_KEY` en `.env` no lo levantes.
+
+```powershell
+docker compose --profile ollama up -d ollama           # en CPU (cualquier máquina)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up -d ollama   # con GPU NVIDIA
+docker compose --profile ia --profile ollama up -d --build     # IA y Ollama juntos
+```
+
+- Dentro de la red de Compose, `ia-api` e `ia-worker` lo llaman en `IA_OLLAMA_URL=http://ollama:11434`. El puerto 11434 se publica **solo en 127.0.0.1**, para el servicio de IA corrido con `uv` en la máquina (`IA_OLLAMA_URL=http://localhost:11434`, el valor del `.env.example` de IA); nunca fuera de ella.
+- **GPU (opcional):** `docker-compose.gpu.yml` le da a `ollama` la GPU NVIDIA. Requiere Docker Desktop con WSL 2 y el controlador de NVIDIA de Windows; compruébalo con `docker run --rm --gpus all --entrypoint nvidia-smi ollama/ollama:0.40.4`. Para no repetir `-f`, pon en tu `.env` `COMPOSE_FILE=docker-compose.yml;docker-compose.gpu.yml` (en Linux y macOS, separado con `:`). Sin GPU, Ollama corre en CPU: funciona, pero cada respuesta tarda bastante más.
+- Ajustes del contenedor (decisión del equipo): caché de contexto en 8 bits con *flash attention* (`OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_FLASH_ATTENTION=1`) para que el contexto de 16384 de la 503 entre en menos memoria; un modelo cargado y una petición a la vez (`OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`); el modelo queda cargado 30 minutos (`OLLAMA_KEEP_ALIVE`).
+- `./scripts/estado.ps1` muestra si responde y qué modelos tiene.
+
 ### Carga inicial de la base de reportes (401)
 
 Llena `reportes_db` con lo que ya tienen Obras, Materiales y Finanzas (por ejemplo, los datos de prueba): se corre **una vez** al crear la base, y otra vez después de cada `recargar`. Con los tres servicios levantados en la máquina:

@@ -17,3 +17,10 @@ if curl -fsS --max-time 3 -H 'content-type: application/json' -d '{"query":"{ sa
 else
   echo "Gateway: no responde (http://localhost:4000/graphql)"
 fi
+# 503 · Ollama (perfil ollama): versión y modelos descargados
+if version=$(curl -fsS --max-time 3 http://localhost:11434/api/version 2>/dev/null); then
+  modelos=$(curl -fsS --max-time 3 http://localhost:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | paste -sd, -)
+  echo "Ollama: responde ($version; modelos: ${modelos:-ninguno, corre scripts/descargar-modelo.sh})"
+else
+  echo "Ollama: no responde (http://localhost:11434; perfil ollama)"
+fi
