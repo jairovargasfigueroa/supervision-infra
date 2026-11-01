@@ -30,7 +30,26 @@ docker compose --profile ia up -d --build    # ia-api (http://localhost:8085/sal
 docker compose --profile ia stop ia-api ia-worker
 ```
 
-Construye la imagen de `services/ia` (`IA_DIR` de `.env`) y la usa para los dos procesos. No usa el `.env` de IA: sus variables están en `docker-compose.yml` (`x-ia-entorno`) con las claves de este `.env` (`POSTGRES_IA_CLAVE`, `RABBITMQ_IA_CLAVE`). PostgreSQL (5433) y MongoDB se buscan en la máquina (`host.docker.internal`), así que sirven tanto la instalación local como el perfil `bases`. `ia-api` aplica las migraciones de `reportes_db` antes de atender. Para desarrollar el servicio, también se puede correr sin Docker (`services/ia`, con `uv`); no levantes los dos a la vez (los dos usan el 8085 y la cola `ia`).
+Construye la imagen de `services/ia` (`IA_DIR` de `.env`) y la usa para los dos procesos. No usa el `.env` de IA: sus variables están en `docker-compose.yml` (`x-ia-entorno`) con las claves de este `.env` (`POSTGRES_IA_CLAVE`, `RABBITMQ_IA_CLAVE`). PostgreSQL (5433) y MongoDB se buscan en la máquina (`host.docker.internal`), así que sirven tanto la instalación local como el perfil `bases`. `ia-api` aplica las migraciones de `reportes_db` antes de atender. Desde la 503 también reciben `IA_REPORTES_DB_URL_LECTURA` (rol `ia_reportes_lector`, `POSTGRES_IA_LECTOR_CLAVE`) y el modelo de lenguaje: `IA_LLM_PROVEEDOR` (`ollama` por defecto, o `anthropic`), `IA_LLM_MODELO` (vacío: `qwen3:8b` u `claude-sonnet-5-5`), `IA_OLLAMA_URL` (por defecto `http://ollama:11434`, el servicio `ollama` de la red de Compose) e `IA_ANTHROPIC_API_KEY` (solo en tu `.env`; vacía en `.env.example`). Para desarrollar el servicio, también se puede correr sin Docker (`services/ia`, con `uv`); no levantes los dos a la vez (los dos usan el 8085 y la cola `ia`).
+
+### Modelo de lenguaje local: Ollama (503 y 502, opcional)
+
+El servicio de IA usa por defecto `IA_LLM_PROVEEDOR=ollama`: el servicio `ollama` (imagen `ollama/ollama:0.40.4`, perfil `ollama`, volumen `datos-ollama`) con el modelo `qwen3:8b` (unos 5 GB). Solo hace falta si usas Ollama; con `IA_LLM_PROVEEDOR=anthropic` y tu `IA_ANTHROPIC_API_KEY` en `.env` no lo levantes.
+
+```powershell
+docker compose --profile ollama up -d ollama           # en CPU (cualquier máquina)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up -d ollama   # con GPU NVIDIA
+docker compose --profile ia --profile ollama up -d --build     # IA y Ollama juntos
+```
+
+- Dentro de la red de Compose, `ia-api` e `ia-worker` lo llaman en `IA_OLLAMA_URL=http://ollama:11434`. El puerto 11434 se publica **solo en 127.0.0.1**, para el servicio de IA corrido con `uv` en la máquina (`IA_OLLAMA_URL=http://localhost:11434`, el valor del `.env.example` de IA); nunca fuera de ella.
+- **GPU (opcional):** `docker-compose.gpu.yml` le da a `ollama` la GPU NVIDIA. Requiere Docker Desktop con WSL 2 y el controlador de NVIDIA de Windows; compruébalo con `docker run --rm --gpus all --entrypoint nvidia-smi ollama/ollama:0.40.4`. Para no repetir `-f`, pon en tu `.env` `COMPOSE_FILE=docker-compose.yml;docker-compose.gpu.yml` (en Linux y macOS, separado con `:`). Sin GPU, Ollama corre en CPU: funciona, pero cada respuesta tarda bastante más.
+- Ajustes del contenedor (decisión del equipo): caché de contexto en 8 bits con *flash attention* (`OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_FLASH_ATTENTION=1`) para que el contexto de 16384 de la 503 entre en menos memoria; un modelo cargado y una petición a la vez (`OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`); el modelo queda cargado 30 minutos (`OLLAMA_KEEP_ALIVE`).
+- `./scripts/estado.ps1` muestra si responde y qué modelos tiene.
+
+**Descargar el modelo (una vez):** `./scripts/descargar-modelo.ps1` (en Linux y macOS, `./scripts/descargar-modelo.sh`). Ejecuta `ollama pull` dentro del contenedor con `IA_LLM_MODELO` de `.env` o, si está vacío, `qwen3:8b` (otro: `-Modelo llama3.1:8b`); si `ollama` no está corriendo, lo levanta (con la GPU si tu `.env` tiene el `COMPOSE_FILE` de arriba). El modelo queda en el volumen `datos-ollama` (no se vuelve a bajar al recrear el contenedor; `reiniciar-datos` sí lo borra).
+
+Medido el 01/11/2026 en la computadora del equipo (RTX 3060 Laptop de 6 GB, Docker con 8 GB de RAM), con `docker-compose.gpu.yml`: `qwen3:8b` (5,2 GB) con contexto de 16384 ocupa 6,7 GB y queda repartido 64 % en la GPU y 36 % en la CPU (no entra entero en 6 GB); la primera respuesta tarda unos 60 s (carga del modelo) y después una pregunta corta responde en menos de 1 s y una frase de unas 30 palabras en unos 4 s (8 *tokens* por segundo). Con salida estructurada (`format` con JSON Schema) responde un JSON válido.
 
 ### Carga inicial de la base de reportes (401)
 
@@ -53,6 +72,20 @@ CREATE DATABASE reportes_db OWNER ia;
 ```
 
 El servicio de IA se conecta con `IA_REPORTES_DB_URL=postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db` y crea sus tablas con `alembic upgrade head`. Si ya tenías el volumen de PostgreSQL del contenedor de antes de la 401, el script no vuelve a correr: crea el usuario y la base con las mismas dos líneas (`docker compose exec postgres psql -U postgres`).
+
+### Usuario de solo lectura de los reportes (503)
+
+El constructor de reportes del servicio de IA lee `reportes_db` con el rol **`ia_reportes_lector`** (`LOGIN`, `default_transaction_read_only = on`, contraseña `POSTGRES_IA_LECTOR_CLAVE` de `.env`). Lo crea `postgres/lector-reportes.sql`, que es idempotente (si el rol existe, le vuelve a poner la contraseña). Los permisos `SELECT` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` los da la migración `0002` del servicio de IA, que **falla si el rol no existe**: créalo antes de levantar `ia-api` con el código de la 503.
+
+- Contenedor nuevo (perfil `bases`, volumen vacío): lo hace solo `init-reportes.sh` (sin `POSTGRES_IA_LECTOR_CLAVE` el script se detiene).
+- PostgreSQL instalado en el 5433, o volumen del contenedor que ya existía: una vez, como superusuario, con el servicio `psql-cli` (no hace falta tener `psql` instalado):
+
+```powershell
+# PowerShell, desde infra/ (POSTGRES_IA_LECTOR_CLAVE de .env; la clave del superusuario postgres de tu instalación)
+docker compose --profile herramientas run --rm -e PGUSER=postgres -e PGPASSWORD='<clave de postgres>' -e PGDATABASE=postgres psql-cli -v clave='<POSTGRES_IA_LECTOR_CLAVE>' -f /lector-reportes.sql
+```
+
+En Git Bash antepón `MSYS_NO_PATHCONV=1` (si no, convierte `/lector-reportes.sql` en una ruta de Windows). El servicio de IA lo usa con `IA_REPORTES_DB_URL_LECTURA=postgresql+psycopg://ia_reportes_lector:<POSTGRES_IA_LECTOR_CLAVE>@localhost:5433/reportes_db`.
 
 Versiones, variables de cada proyecto y orden para levantar todo: `docs/entorno-local.md` del repo `supervision-docs`. Detalle de este repo: `CLAUDE.md` y `docs/`.
 
@@ -120,6 +153,28 @@ Hace, en orden: guardas (`SEMILLA_PERMITIDA=si`, bucket `supervision-dev-…`), 
 ```
 
 Detén antes Obras, Materiales y Finanzas (el script avisa si siguen corriendo). Vacía Finanzas (`datos-prueba:vaciar`) y Materiales (`semilla:vaciar`), las colas de la plataforma en RabbitMQ (`obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y `n8n.*`, para que no lleguen mensajes viejos sobre datos borrados) la base de reportes del servicio de IA (`reportes_db`: tablas `rpt_*`, `evento_aplicado` y `carga_inicial`, con el servicio `psql-cli` y el usuario `ia`; si la base todavía no existe o no responde, avisa y sigue) y el prefijo `fotos/` del bucket; si los usuarios de Keycloak no tienen su `id`, recrea Keycloak para reimportar el realm; y carga todo con la fecha del día (Obras vacía sus tablas en la misma transacción en que carga). Nunca borra el historial de migraciones (tampoco `alembic_version` de `reportes_db`). Al final recuerda correr la **carga inicial** de la base de reportes (401), que la vuelve a llenar por REST con los datos recién cargados.
+
+### Datos de prueba del servicio de IA (503)
+
+La base de reportes no tiene semilla propia (la llena la carga inicial de la 401) y la carga inicial no evalúa las salidas pasadas como consumos atípicos (403): esos solo nacen de un `MovimientoRegistrado`. Para las 20 preguntas de la prueba manual de la 503 (README de `services/ia`), después de la semilla:
+
+1. Obras, Materiales y Finanzas levantados → carga inicial (`docker compose --profile ia-carga run --rm ia-carga-inicial`); al terminar calcula el riesgo de retraso de las obras (402).
+2. Con `ia-worker` corriendo y Materiales levantado: `node semilla/eventos-ia.mjs`. Vuelve a publicar, **solo en la cola `ia`** (exchange por defecto, ningún otro servicio lo recibe), el `MovimientoRegistrado` de las salidas 10033 (`FIE-12` excedido de la obra 1) y 20018 (`CEM-IP30` que superó el stock en la obra 2), con los datos que tiene Materiales (`GET /obras/{id}/movimientos` y `GET /materiales`, token de gerente1). Id fijo del evento: `fa000000-0000-4000-8000-0000000NNNNN` (N.º del movimiento); IA no aplica dos veces el mismo, así que correrlo otra vez no cambia nada. Si `ia-worker` está corriendo, espera a que vacíe la cola y muestra qué decidió el modelo.
+
+Resultado comprobado el 01/11/2026 con el modelo `ca-1.0.0`: 20018 queda como consumo atípico `PENDIENTE` («Salió más material del que había en stock», puntaje 0,59) y 10033 el modelo la evalúa como **normal** (puntaje 0,52; el «excedido» de la 006 compara con lo previsto, el modelo con el consumo habitual). Las salidas no se fuerzan: decide el modelo.
+
+`recargar` vacía también `ia_db.consumo_atipico` (servicio `mongo-cli`, `mongo/vaciar-ia.js`): sus documentos son salidas que acaba de borrar, y así `eventos-ia.mjs` los vuelve a crear con las fechas nuevas y en `PENDIENTE`.
+
+Qué hay para cada conjunto del constructor de reportes el día D (valores en `docs/datos-prueba.md` de `supervision-docs`):
+
+| Conjunto | Datos |
+|---|---|
+| `OBRAS` | 3 obras `EN_EJECUCION`: Las Palmeras (`NORTE`, avance 28,49 %, plazo 33,33 %), Las Lomas (`ESTE`, 16,34 % y 50,00 %, la única «en riesgo») y Nueva Esperanza (`SUR`, 0 % y 2,08 %); clientes cliente1 (obras 1 y 3) y demo1 (obra 2); nivel y porcentaje de riesgo, los que calcula la 402 |
+| `CONSUMO_MATERIAL` | salidas de `M-3` (obra 1), `M-2` y `M-1` (obras 1 y 2), con monto referencial; **ninguna en el mes actual** (`M0` solo tiene ingresos de la obra 3), así que «Material usado este mes» sale vacío el día D |
+| `MOVIMIENTOS` | 67 movimientos (ingresos y salidas) de `M-3` a `M0`; uno que superó el stock (20018) |
+| `COBROS` | `COB-AAAA-0001` `VENCIDO` (obra 1, 290.134,80), `-0002` (obra 2, vence D + 10) y `-0003` (obra 1, vence D + 18) `PENDIENTE` |
+| `PLANILLAS` | aprobadas: obra 1 N.º 1 y 2, obra 2 N.º 1; observada: obra 2 N.º 2 (sin periodo ni montos y sin «Observada por», como la deja la carga inicial). La N.º 3 de la obra 1 está `PRESENTADA` y no llega a la base de reportes |
+| `CONSUMOS_ATIPICOS` | 20018 (obra 2, `M-1`) `PENDIENTE` después de `eventos-ia.mjs` |
 
 ### Cuándo cambian los indicadores
 

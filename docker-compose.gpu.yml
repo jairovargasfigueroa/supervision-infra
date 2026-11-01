@@ -1,0 +1,13 @@
+# 503 · Opcional: el servicio ollama usa la GPU NVIDIA (Docker Desktop con WSL 2 y el controlador de NVIDIA de Windows).
+# Se agrega encima del archivo principal; sin él, Ollama corre en CPU (más lento, pero funciona en cualquier máquina):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up -d ollama
+# O, para no repetirlo, en infra/.env: COMPOSE_FILE=docker-compose.yml;docker-compose.gpu.yml (en Linux y macOS con ":").
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

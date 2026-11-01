@@ -9,7 +9,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ## Stack
 
 - Docker Compose (Docker Desktop con WSL 2)
-- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo)
+- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo), `ollama/ollama:0.40.4` (perfil `ollama`, 503: modelo de lenguaje local; GPU opcional con `docker-compose.gpu.yml`)
 - Scripts en PowerShell (`.ps1`, Windows) y Bash (`.sh`, Linux y macOS) que hacen lo mismo
 - Pruebas de humo con Node 24 (`node pruebas/humo.mjs`, sin dependencias)
 
@@ -20,6 +20,8 @@ cp .env.example .env              # una vez; completa las contraseñas
 ./scripts/levantar.ps1            # RabbitMQ, Keycloak y DynamoDB Local (agrega -Perfil bases para PostgreSQL y MongoDB)
 docker compose --profile ia up -d --build   # 401: ia-api (8085) e ia-worker desde la imagen de services/ia (opcional)
 docker compose --profile ia-carga run --rm ia-carga-inicial   # 401: carga inicial de reportes_db (una vez, y después de recargar)
+docker compose --profile ollama up -d ollama   # 503: modelo de lenguaje local (con GPU: agrega -f docker-compose.yml -f docker-compose.gpu.yml)
+./scripts/descargar-modelo.ps1    # 503: ollama pull qwen3:8b (o IA_LLM_MODELO) en el servicio ollama; una vez
 ./scripts/estado.ps1              # qué contenedor está sano y GET /salud de cada servicio que corre
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
@@ -30,6 +32,7 @@ node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (
 node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
+node semilla/eventos-ia.mjs       # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
 docker compose config -q          # valida el docker-compose.yml
 ```
 
@@ -41,11 +44,13 @@ En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
 
 ```
 docker-compose.yml        servicios, perfiles, healthchecks y volúmenes con nombre
+docker-compose.gpu.yml    503: opcional, da la GPU NVIDIA al servicio ollama
 .env.example              variables (contraseñas y claves vacías, SEMILLA_PERMITIDA, carpetas de los servicios, bucket S3)
 postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)
 postgres/vaciar-reportes.sql vacía el modelo de lectura en recargar (401; lo corre el servicio psql-cli)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
+mongo/vaciar-ia.js        503: vacía ia_db.consumo_atipico en recargar (lo corre el servicio mongo-cli)
 ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
@@ -53,7 +58,7 @@ rabbitmq/
 keycloak/
   realm-supervision.json  realm importado al iniciar (roles, clientes, usuarios de prueba)
   temas/supervision/      tema de la pantalla de inicio de sesión (extiende keycloak.v2)
-scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica y celular (.ps1 y .sh)
+scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica, celular y descargar-modelo (.ps1 y .sh)
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
 pruebas/reportes.mjs      prueba de integración de la base de reportes (401): eventos y carga inicial
@@ -62,6 +67,7 @@ semilla/
   recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)
   comun.ps1 · comun.sh    pasos comunes de los dos scripts (uno por lenguaje, mismo comportamiento)
   plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
+  eventos-ia.mjs          503: vuelve a publicar en la cola ia el MovimientoRegistrado de las salidas 10033 y 20018
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 docs/                     estructura, contratos y tareas por funcionalidad
 ```

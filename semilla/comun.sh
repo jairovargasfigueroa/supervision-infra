@@ -72,6 +72,18 @@ vaciar_reportes() {
   fi
 }
 
+# 503: vacía ia_db.consumo_atipico con el servicio mongo-cli (perfil herramientas). Si MongoDB no responde, avisa y sigue.
+vaciar_atipicos() {
+  local salida
+  if salida="$( (cd "$INFRA" && MSYS_NO_PATHCONV=1 docker compose --profile herramientas run --rm --no-TTY mongo-cli /vaciar-ia.js 2>&1) \
+      | grep -Ev '^[[:space:]]*Container .*(Creat|Start|Stopp|Remov)'; exit "${PIPESTATUS[0]}")"; then
+    printf '%s\n' "$salida" | sed 's/^/ok       /'
+  else
+    printf '%s\n' "$salida"
+    aviso "No se pudo vaciar ia_db.consumo_atipico (salida de arriba): los consumos atípicos viejos quedan hasta que lo vacíes."
+  fi
+}
+
 # Guardas, herramientas y piezas que deben responder. Uso: comprobar_entorno [--rabbitmq]
 comprobar_entorno() {
   paso 'Guardas'

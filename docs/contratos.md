@@ -11,6 +11,7 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | PostgreSQL (perfil `bases`) | 5433 |
 | MongoDB (perfil `bases`) | 27017 |
 | Servicio de IA, `ia-api` (perfil `ia`, 401) | 8085 |
+| Ollama (perfil `ollama`, 503) | 11434, solo en `127.0.0.1` (en la red de Compose, `http://ollama:11434`) |
 
 ## RabbitMQ: usuarios
 
@@ -57,6 +58,8 @@ Bases `obras_db` y `finanzas_db` (`postgres/init.sql` en el contenedor; en la in
 
 `reportes_db` (401, servicio de IA) tiene **usuario propio** `ia`, con la contraseña `POSTGRES_IA_CLAVE` de `.env`, y es su dueño (crea las tablas con Alembic). En el contenedor lo hace `postgres/init-reportes.sh`; en la instalación local, a mano (README, «Base de reportes»). URL para el `.env` de IA: `postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db`.
 
+Rol de solo lectura **`ia_reportes_lector`** (503): `LOGIN` y `default_transaction_read_only = on`, contraseña `POSTGRES_IA_LECTOR_CLAVE` de `.env` (`postgres/lector-reportes.sql`; en el contenedor lo corre `init-reportes.sh`, en la instalación local o en un volumen anterior, el comando del README). Sus `SELECT` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` los da la migración `0002` del servicio de IA (nada sobre `evento_aplicado` ni `carga_inicial`). URL para el `.env` de IA: `IA_REPORTES_DB_URL_LECTURA=postgresql+psycopg://ia_reportes_lector:<POSTGRES_IA_LECTOR_CLAVE>@localhost:5433/reportes_db`.
+
 ## RabbitMQ: exchange, colas y enlaces
 
 Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`) y 010 (cola `notificaciones`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.
@@ -87,6 +90,7 @@ Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún event
 - **Resumen:** infra copia a su resumen final las líneas de la salida de cada comando que contienen la palabra «resumen» (sin distinguir mayúsculas) o la fecha usada como `D = AAAA-MM-DD`, así que cada servicio imprime sus conteos en una línea así (Finanzas: `Finanzas · datos de prueba con D = 2026-10-28: 3 contratos, 3 reservas, 3 cobros.`).
 - **Orden:** Obras → Finanzas → Materiales → fotos. En `recargar`, antes: Finanzas y Materiales se vacían, se vacían las colas de la plataforma y se borra el prefijo `fotos/` del bucket.
 - **Base de reportes (401):** `recargar` vacía `reportes_db` (`postgres/vaciar-reportes.sql`: las tablas `rpt_*`, `evento_aplicado` y `carga_inicial` que existan; nunca `alembic_version`) con el servicio `psql-cli` (perfil `herramientas`, usuario `ia`, `host.docker.internal:5433`); si no responde, avisa y sigue. No hay semilla propia de IA: al terminar, indica correr la carga inicial (`docker compose --profile ia-carga run --rm ia-carga-inicial` o `uv run python -m ia.carga_inicial` en `services/ia`).
+- **Eventos de prueba para IA (503):** `semilla/eventos-ia.mjs` publica en la cola `ia` (exchange por defecto, clave `ia`, encabezado `x-clave-origen = evento.materiales.MovimientoRegistrado`) el `MovimientoRegistrado` de las salidas 10033 y 20018 de Materiales, con id `fa000000-0000-4000-8000-0000000NNNNN` y `correlacionId` `fa000000-0000-4000-8000-000000000000`. `recargar` vacía `ia_db.consumo_atipico` (servicio `mongo-cli`) y al final pide la carga inicial y este script.
 - **Colas que vacía `recargar`** (API del panel, `DELETE /api/queues/%2F/{cola}/contents`, solo las que existan): `obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y las `n8n.*`. `notificaciones` también, aunque la 010 todavía no exista: sus mensajes acumulados apuntan a obras y planillas que se borraron y generarían avisos falsos cuando se cree el servicio.
 - **Fotos:** `s3-cli` (perfil `herramientas`) sube `semilla/fotos/` a `s3://$S3_BUCKET/fotos/` con `aws s3 sync` y `recargar` borra ese prefijo. Un `S3_BUCKET` que no empiece con `supervision-dev-` se rechaza; si faltan el bucket o las claves, la semilla salta las fotos con un aviso y sigue (las filas de las fotos se cargan igual en Obras).
 - **Keycloak:** la semilla comprueba con la API de administración que los 9 usuarios existen con su `id`; si no, se detiene. `recargar` reimporta el realm (`docker compose up -d --force-recreate keycloak`).

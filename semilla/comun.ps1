@@ -185,6 +185,24 @@ function Vaciar-Reportes {
     return $false
 }
 
+# 503: vacía ia_db.consumo_atipico con el servicio mongo-cli (perfil herramientas). Si MongoDB no responde, avisa y sigue.
+function Vaciar-Atipicos {
+    Push-Location $Infra
+    $anterior = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $salida = & docker compose --profile herramientas run --rm --no-TTY mongo-cli /vaciar-ia.js 2>&1 |
+            ForEach-Object { Linea $_ } | Where-Object { $_ -notmatch '^\s*Container .*(Creat|Start|Stopp|Remov)' }
+        $codigo = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $anterior
+        Pop-Location
+    }
+    if ($codigo -eq 0) { $salida | ForEach-Object { Write-Host "ok       $_" }; return }
+    $salida | ForEach-Object { Write-Host $_ }
+    Aviso "No se pudo vaciar ia_db.consumo_atipico (salida de arriba): los consumos atípicos viejos quedan hasta que lo vacíes."
+}
+
 function Contar-Fotos([string]$Bucket) {
     $lista = Ejecutar-S3 @('s3', 'ls', "s3://$Bucket/fotos/", '--recursive')
     if ($LASTEXITCODE -ne 0) { Detener "No se pudo listar s3://$Bucket/fotos/:`n$($lista -join "`n")" }

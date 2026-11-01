@@ -38,6 +38,9 @@ node "$AYUDANTE" colas || exit 1
 paso 'Vaciar la base de reportes de IA (reportes_db, 401)'
 vaciar_reportes
 
+paso 'Vaciar los consumos atípicos de IA (ia_db.consumo_atipico, 403)'
+vaciar_atipicos
+
 paso 'Borrar las fotos del bucket S3 de desarrollo'
 if [ "$FOTOS" = si ]; then
   ejecutar_s3 s3 rm "s3://$BUCKET/fotos/" --recursive --only-show-errors \
@@ -69,3 +72,5 @@ else
 fi
 echo '  docker compose --profile ia-carga run --rm ia-carga-inicial     (en infra)'
 echo '  o, en services/ia: uv run python -m ia.carga_inicial'
+echo 'Después, con ia-worker corriendo, los eventos de prueba de IA (consumos atípicos, 503):'
+echo '  node semilla/eventos-ia.mjs     (en infra)'
