@@ -27,6 +27,15 @@ x-ia-entorno: &ia-entorno
   IA_ZONA_HORARIA: America/La_Paz
   # El secreto de ia-reportes solo lo recibe ia-carga-inicial (401, «Token»)
   IA_REPORTES_CLIENT_SECRET: ""
+  # 503 · Constructor de reportes: usuario de solo lectura de reportes_db (rol ia_reportes_lector)
+  IA_REPORTES_DB_URL_LECTURA: postgresql+psycopg://ia_reportes_lector:${POSTGRES_IA_LECTOR_CLAVE:-}@host.docker.internal:5433/reportes_db
+  # 503 (y 502) · Modelo de lenguaje: ollama (por defecto; servicio ollama del perfil ollama) o anthropic.
+  # IA_LLM_MODELO vacío: qwen3:8b con ollama y claude-sonnet-5-5 con anthropic.
+  IA_LLM_PROVEEDOR: ${IA_LLM_PROVEEDOR:-ollama}
+  IA_LLM_MODELO: ${IA_LLM_MODELO:-}
+  IA_OLLAMA_URL: ${IA_OLLAMA_URL:-http://ollama:11434}
+  # Secreto: solo en infra/.env (vacío en .env.example). Con anthropic y sin clave, el servicio no arranca.
+  IA_ANTHROPIC_API_KEY: ${IA_ANTHROPIC_API_KEY:-}
 
 # Arranca el reenvío de localhost:8080 a Keycloak, espera a que escuche y ejecuta el proceso del servicio
 x-ia-con-keycloak: &ia-con-keycloak >-
