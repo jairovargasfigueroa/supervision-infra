@@ -62,6 +62,174 @@ docker compose --profile ia-carga run --rm ia-carga-inicial   # en contenedor (a
 
 Termina con código 0 si cargó todo y distinto de 0 si falló (dice en qué obra y servicio); correrla otra vez no duplica nada. Usa el cliente `ia-reportes` de Keycloak con el secreto `IA_REPORTES_CLIENT_SECRET` de este `.env` (en contenedor, es el único proceso que lo recibe). Llega a los servicios por `host.docker.internal:8081`, `8082` y `8083`: si alguno escucha solo en `127.0.0.1` y no responde desde el contenedor, levántalo escuchando en todas las interfaces o corre la carga sin Docker.
 
+### Secreto del cliente `ia-agentes` (501, agentes y MCP)
+
+El servicio de IA (`ia-worker`, host de los agentes) pide su token con *client credentials* del cliente confidencial `ia-agentes` (rol `agente_ia`, audiencia `plataforma-api`, 5 minutos) para llamar a `POST /mcp` de Obras, Materiales, Finanzas e IA. **El secreto no está en el repositorio:** el realm trae `"secret": "${IA_AGENTES_CLIENT_SECRET}"` y Keycloak lo toma de la variable del contenedor al importar.
+
+1. En `infra/.env` pon tu propio valor en `IA_AGENTES_CLIENT_SECRET` (solo letras, números, `-` y `_`; el `.env.example` trae uno de ejemplo). Ese es el secreto en desarrollo.
+2. Si Keycloak ya estaba corriendo con otro valor (o sin el cliente), recréalo para que vuelva a importar el realm: `docker compose up -d --force-recreate keycloak` (tarda menos de un minuto; se pierden las sesiones abiertas y lo cambiado a mano en el panel).
+3. Cópialo a `IA_AGENTES_CLIENT_SECRET` del `.env` de `services/ia` si corres el servicio con `uv`; en contenedor, `ia-worker` lo recibe de este `.env` (`ia-api` no).
+4. Para ver el que tiene Keycloak: panel `http://localhost:8080/admin` → realm `supervision` → *Clients* → `ia-agentes` → *Credentials* (o `GET /admin/realms/supervision/clients/{id}/client-secret` con el administrador de `.env`). Para probarlo:
+
+```powershell
+$s = (Select-String -Path .env -Pattern '^IA_AGENTES_CLIENT_SECRET=(.*)
+
+El contenedor (perfil `bases`) crea solo, con el volumen vacío, el usuario `ia` (contraseña `POSTGRES_IA_CLAVE` de `.env`) y la base `reportes_db`, dueña de ese usuario (`postgres/init-reportes.sh`). En tu PostgreSQL instalado en el 5433 hazlo una vez a mano, como `postgres`, con la misma contraseña que pusiste en `.env`:
+
+```sql
+CREATE ROLE ia LOGIN PASSWORD 'la POSTGRES_IA_CLAVE de infra/.env';
+CREATE DATABASE reportes_db OWNER ia;
+```
+
+El servicio de IA se conecta con `IA_REPORTES_DB_URL=postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db` y crea sus tablas con `alembic upgrade head`. Si ya tenías el volumen de PostgreSQL del contenedor de antes de la 401, el script no vuelve a correr: crea el usuario y la base con las mismas dos líneas (`docker compose exec postgres psql -U postgres`).
+
+### Usuario de solo lectura de los reportes (503)
+
+El constructor de reportes del servicio de IA lee `reportes_db` con el rol **`ia_reportes_lector`** (`LOGIN`, `default_transaction_read_only = on`, contraseña `POSTGRES_IA_LECTOR_CLAVE` de `.env`). Lo crea `postgres/lector-reportes.sql`, que es idempotente (si el rol existe, le vuelve a poner la contraseña). Los permisos `SELECT` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` los da la migración `0002` del servicio de IA, que **falla si el rol no existe**: créalo antes de levantar `ia-api` con el código de la 503.
+
+- Contenedor nuevo (perfil `bases`, volumen vacío): lo hace solo `init-reportes.sh` (sin `POSTGRES_IA_LECTOR_CLAVE` el script se detiene).
+- PostgreSQL instalado en el 5433, o volumen del contenedor que ya existía: una vez, como superusuario, con el servicio `psql-cli` (no hace falta tener `psql` instalado):
+
+```powershell
+# PowerShell, desde infra/ (POSTGRES_IA_LECTOR_CLAVE de .env; la clave del superusuario postgres de tu instalación)
+docker compose --profile herramientas run --rm -e PGUSER=postgres -e PGPASSWORD='<clave de postgres>' -e PGDATABASE=postgres psql-cli -v clave='<POSTGRES_IA_LECTOR_CLAVE>' -f /lector-reportes.sql
+```
+
+En Git Bash antepón `MSYS_NO_PATHCONV=1` (si no, convierte `/lector-reportes.sql` en una ruta de Windows). El servicio de IA lo usa con `IA_REPORTES_DB_URL_LECTURA=postgresql+psycopg://ia_reportes_lector:<POSTGRES_IA_LECTOR_CLAVE>@localhost:5433/reportes_db`.
+
+Versiones, variables de cada proyecto y orden para levantar todo: `docs/entorno-local.md` del repo `supervision-docs`. Detalle de este repo: `CLAUDE.md` y `docs/`.
+
+## DynamoDB Local (101)
+
+Base del servicio de Sincronización (`services/sincronizacion`), con `-sharedDb` y el volumen `datos-dynamodb` (los datos quedan al reiniciar; `./scripts/reiniciar-datos.ps1` los borra). Para levantar solo esta pieza: `docker compose up -d dynamodb`. Las tablas (`operacion_procesada` y `estado_dispositivo`) las crea Sincronización al iniciar con `DYNAMODB_CREAR_TABLAS=true`.
+
+Listar las tablas (DynamoDB Local acepta cualquier clave; la región no importa con `-sharedDb`):
+
+```powershell
+# con AWS CLI instalado
+$env:AWS_ACCESS_KEY_ID = 'local'; $env:AWS_SECRET_ACCESS_KEY = 'local'; $env:AWS_DEFAULT_REGION = 'sa-east-1'
+aws dynamodb list-tables --endpoint-url http://localhost:8000
+# sin instalar nada, con la imagen de AWS CLI del perfil herramientas
+docker compose --profile herramientas run --rm -e AWS_ACCESS_KEY_ID=local -e AWS_SECRET_ACCESS_KEY=local s3-cli dynamodb list-tables --endpoint-url http://dynamodb:8000
+```
+
+Variables que necesita Sincronización en su `.env` (copia de su `.env.example`; el servicio corre fuera de Docker):
+
+| Variable | Valor en desarrollo |
+|---|---|
+| `PORT` | `8084` |
+| `KEYCLOAK_URL` / `KEYCLOAK_REALM` / `AUDIENCIA` | `http://localhost:8080` / `supervision` / `plataforma-api` |
+| `OBRAS_URL` / `MATERIALES_URL` | `http://localhost:8081` / `http://localhost:8082` |
+| `DYNAMODB_ENDPOINT` | `http://localhost:8000` (vacío en AWS) |
+| `AWS_REGION` | `sa-east-1` |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `local` / `local` (valores de prueba: DynamoDB Local acepta cualquiera) |
+| `DYNAMODB_CREAR_TABLAS` | `true` (solo en desarrollo) |
+| `TIEMPO_MAXIMO_LLAMADA_MS` / `TIEMPO_MAXIMO_LOTE_MS` | `5000` / `20000` |
+
+## Probar la app en el celular
+
+La app usa `localhost` (Keycloak 8080, Obras 8081, Materiales 8082, Sincronización 8084, Metro 8090) y el celular Android llega a la computadora con `adb reverse`: así el token sale con el mismo emisor que validan los servicios.
+
+1. En el celular: activa las opciones de desarrollador y la **depuración USB** (o la depuración inalámbrica y empareja con `adb pair`).
+2. Conecta el cable y acepta el aviso en el celular; `adb devices` debe mostrarlo.
+3. `./scripts/celular.ps1` (repetir si se reconecta el celular).
+4. En `mobile/app-obra`: `npm start` y abre la app en Expo Go.
+
+## Datos de prueba (011)
+
+Un conjunto pequeño y fijo para probar y demostrar sin registrar todo a mano: **3 obras de Santa Cruz** (Edificio Residencial Las Palmeras a buen ritmo, Condominio Las Lomas en riesgo y Unidad Educativa Nueva Esperanza recién registrada), 21 partidas, 5 planillas (una `PRESENTADA` y una `OBSERVADA`), 10 fotos, 3 contratos con sus reservas y 3 cobros (uno `VENCIDO`), 15 materiales, 67 movimientos y 3 cierres de periodo, más los 9 usuarios de Keycloak (contraseña `Prueba123!`, incluido `demo1`, residente y cliente para probar el paso del ERP al portal sin volver a iniciar sesión). Los valores y qué se ve con cada usuario están en `docs/datos-prueba.md` del repo `supervision-docs` (fuente única). **Solo desarrollo.**
+
+### Antes de la primera carga
+
+1. En `.env`: `SEMILLA_PERMITIDA=si` (ya viene en `.env.example`) y, si los proyectos no están en las carpetas hermanas, `OBRAS_DIR`, `FINANZAS_DIR` y `MATERIALES_DIR`.
+2. Fotos: `S3_BUCKET` (debe empezar con `supervision-dev-`; cualquier otro nombre se rechaza), `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY` del usuario IAM `supervision-dev` y `AWS_DEFAULT_REGION=sa-east-1`. **Si faltan, la semilla salta las fotos con un aviso** y carga todo lo demás (las filas de las fotos sí quedan en Obras); cuando el bucket exista, completa `.env` y vuelve a correr `semilla`.
+3. Entorno levantado (`./scripts/levantar.ps1`), PostgreSQL y MongoDB corriendo y las migraciones de cada servicio aplicadas (basta con haber arrancado una vez Obras, Finanzas con `php artisan migrate` y Materiales). Node 24, el PHP de Herd (8.3 o más) y Docker Desktop (para las fotos).
+
+### Cargar
+
+```powershell
+./semilla/semilla.ps1                       # D = hoy en La Paz
+$env:SEMILLA_FECHA = '2026-10-28'; ./semilla/semilla.ps1   # con una fecha fija
+```
+
+En Linux y macOS: `./semilla/semilla.sh` (o `SEMILLA_FECHA=2026-10-28 ./semilla/semilla.sh`).
+
+Hace, en orden: guardas (`SEMILLA_PERMITIDA=si`, bucket `supervision-dev-…`), comprueba Node, PHP, las carpetas de los proyectos y que PostgreSQL, MongoDB, Keycloak y el bucket responden; calcula **una sola fecha D** y la pasa a todos en `SEMILLA_FECHA`; comprueba que los 9 usuarios de Keycloak tienen su `id` fijo; carga **Obras → Finanzas → Materiales** (cada uno con su propio comando, ver `docs/contratos.md`), sube las fotos de `semilla/fotos/` al bucket (`fotos/{obraId}/{fotoId}.jpg`) y muestra un **resumen** con D y los conteos de cada servicio. Si algo falla, se detiene con un mensaje y no sigue con los demás. La carga **no publica eventos** y es **idempotente**: correrla de nuevo no duplica nada y no pisa lo que cambiaste (por ejemplo, una planilla aprobada sigue aprobada).
+
+### Recargar (antes de cada demostración)
+
+```powershell
+./semilla/recargar.ps1        # pide confirmación; -Si la omite (en Bash: ./semilla/recargar.sh [--si])
+```
+
+Detén antes Obras, Materiales y Finanzas (el script avisa si siguen corriendo). Vacía Finanzas (`datos-prueba:vaciar`) y Materiales (`semilla:vaciar`), las colas de la plataforma en RabbitMQ (`obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y `n8n.*`, para que no lleguen mensajes viejos sobre datos borrados) la base de reportes del servicio de IA (`reportes_db`: tablas `rpt_*`, `evento_aplicado` y `carga_inicial`, con el servicio `psql-cli` y el usuario `ia`; si la base todavía no existe o no responde, avisa y sigue) y el prefijo `fotos/` del bucket; si los usuarios de Keycloak no tienen su `id`, recrea Keycloak para reimportar el realm; y carga todo con la fecha del día (Obras vacía sus tablas en la misma transacción en que carga). Nunca borra el historial de migraciones (tampoco `alembic_version` de `reportes_db`). Al final recuerda correr la **carga inicial** de la base de reportes (401), que la vuelve a llenar por REST con los datos recién cargados.
+
+### Datos de prueba del servicio de IA (503)
+
+La base de reportes no tiene semilla propia (la llena la carga inicial de la 401) y la carga inicial no evalúa las salidas pasadas como consumos atípicos (403): esos solo nacen de un `MovimientoRegistrado`. Para las 20 preguntas de la prueba manual de la 503 (README de `services/ia`), después de la semilla:
+
+1. Obras, Materiales y Finanzas levantados → carga inicial (`docker compose --profile ia-carga run --rm ia-carga-inicial`); al terminar calcula el riesgo de retraso de las obras (402).
+2. Con `ia-worker` corriendo y Materiales levantado: `node semilla/eventos-ia.mjs`. Vuelve a publicar, **solo en la cola `ia`** (exchange por defecto, ningún otro servicio lo recibe), el `MovimientoRegistrado` de las salidas 10033 (`FIE-12` excedido de la obra 1) y 20018 (`CEM-IP30` que superó el stock en la obra 2), con los datos que tiene Materiales (`GET /obras/{id}/movimientos` y `GET /materiales`, token de gerente1). Id fijo del evento: `fa000000-0000-4000-8000-0000000NNNNN` (N.º del movimiento); IA no aplica dos veces el mismo, así que correrlo otra vez no cambia nada. Si `ia-worker` está corriendo, espera a que vacíe la cola y muestra qué decidió el modelo.
+
+Resultado comprobado el 01/11/2026 con el modelo `ca-1.0.0`: 20018 queda como consumo atípico `PENDIENTE` («Salió más material del que había en stock», puntaje 0,59) y 10033 el modelo la evalúa como **normal** (puntaje 0,52; el «excedido» de la 006 compara con lo previsto, el modelo con el consumo habitual). Las salidas no se fuerzan: decide el modelo.
+
+`recargar` vacía también `ia_db.consumo_atipico` (servicio `mongo-cli`, `mongo/vaciar-ia.js`): sus documentos son salidas que acaba de borrar, y así `eventos-ia.mjs` los vuelve a crear con las fechas nuevas y en `PENDIENTE`.
+
+Qué hay para cada conjunto del constructor de reportes el día D (valores en `docs/datos-prueba.md` de `supervision-docs`):
+
+| Conjunto | Datos |
+|---|---|
+| `OBRAS` | 3 obras `EN_EJECUCION`: Las Palmeras (`NORTE`, avance 28,49 %, plazo 33,33 %), Las Lomas (`ESTE`, 16,34 % y 50,00 %, la única «en riesgo») y Nueva Esperanza (`SUR`, 0 % y 2,08 %); clientes cliente1 (obras 1 y 3) y demo1 (obra 2); nivel y porcentaje de riesgo, los que calcula la 402 |
+| `CONSUMO_MATERIAL` | salidas de `M-3` (obra 1), `M-2` y `M-1` (obras 1 y 2), con monto referencial; **ninguna en el mes actual** (`M0` solo tiene ingresos de la obra 3), así que «Material usado este mes» sale vacío el día D |
+| `MOVIMIENTOS` | 67 movimientos (ingresos y salidas) de `M-3` a `M0`; uno que superó el stock (20018) |
+| `COBROS` | `COB-AAAA-0001` `VENCIDO` (obra 1, 290.134,80), `-0002` (obra 2, vence D + 10) y `-0003` (obra 1, vence D + 18) `PENDIENTE` |
+| `PLANILLAS` | aprobadas: obra 1 N.º 1 y 2, obra 2 N.º 1; observada: obra 2 N.º 2 (sin periodo ni montos y sin «Observada por», como la deja la carga inicial). La N.º 3 de la obra 1 está `PRESENTADA` y no llega a la base de reportes |
+| `CONSUMOS_ATIPICOS` | 20018 (obra 2, `M-1`) `PENDIENTE` después de `eventos-ia.mjs` |
+
+### Cuándo cambian los indicadores
+
+Son exactos **el día D**. Después: desde **D + 11** el cobro de la obra 2 pasa a `VENCIDO`; desde **D + 19** la obra 1 pasa a «en riesgo» y su cobro N.º 2 vence; desde **D + 20** la obra 3 pasa a «en riesgo». Por eso se recarga antes de cada demostración.
+
+### Fotos
+
+`semilla/fotos/generar-fotos.ps1` dibuja las 10 imágenes con System.Drawing (Windows PowerShell 5.1, sin instalar nada): 1600 × 1200, JPEG calidad 80, fondo por obra, un dibujo simple de la partida y el texto «IMAGEN DE MUESTRA». Ya están generadas y en el repo; solo se vuelve a correr si cambian las fotos de `docs/datos-prueba.md`. Las sube y borra el servicio `s3-cli` (`amazon/aws-cli:2.38.0`, perfil `herramientas`), que se usa con `docker compose --profile herramientas run --rm s3-cli s3 …`.
+
+### Prueba completa (con todo integrado)
+
+1. Bases vacías con las migraciones aplicadas. `./semilla/semilla.ps1` termina sin errores y el resumen muestra: Obras 3 obras, 21 partidas, 5 planillas, 10 fotos; Finanzas 3 contratos, 3 reservas, 3 cobros; Materiales 15 materiales, 3 `obra_acceso`, 14 filas de stock, 67 movimientos, 3 cierres; 10 imágenes en el bucket.
+2. `./semilla/semilla.ps1` otra vez: mismos conteos, sin errores.
+3. `outbox_evento` vacía en los tres servicios y el panel de RabbitMQ (http://localhost:15672) sin mensajes nuevos en el exchange `plataforma`.
+4. Levanta todo (servicios, gateway, frontends, portal y app; orden en `docs/entorno-local.md`) y revisa los criterios 7 a 14 de `docs/specs/011-datos-prueba/requisitos.md`: tablero de gerente1 (3 en ejecución, 1 en riesgo, 1 material `BAJO`, 1 cobro vencido por Bs 290.134,80, orden Las Lomas → Las Palmeras → Nueva Esperanza); detalle de Las Palmeras (28,49 % y 33,33 %, saldo 2.117.900,80, `FIE-12` excedido en `M-1`); stock de admin1; visibilidad de residente1, residente2, cliente1, cliente2 y demo1 (ERP → «Aplicaciones → Portal del cliente» sin volver a iniciar sesión); planilla 2 de la obra 2 `OBSERVADA` para residente2; fotos en el ERP, la app y el portal.
+5. En el portal, cliente1 aprueba la planilla 3 de la obra 1 (neto 330.149,10): la saga termina bien y emite `COB-AAAA-0004`.
+6. `./semilla/recargar.ps1`, confirma, y comprueba que todo vuelve al estado del punto 1 (la planilla 3 de la obra 1 otra vez `PRESENTADA`, 3 cobros).
+
+## Prueba de integración de la base de reportes (401)
+
+Con el entorno levantado, Obras, Materiales y Finanzas corriendo (Finanzas con `mensajeria:consumir` **y** `mensajeria:publicar`), el servicio de IA corriendo (`ia-worker`; en contenedor con `docker compose --profile ia up -d --build` o con `uv` en `services/ia`) y `reportes_db` migrada:
+
+```powershell
+node pruebas/reportes.mjs              # eventos: registrar obra y aprobar planilla
+node pruebas/reportes.mjs --carga      # además, la carga inicial dos veces (antes, ./semilla/semilla.ps1)
+node pruebas/reportes.mjs --solo-carga # solo la carga inicial
+```
+
+**Eventos:** registra una obra «Prueba reportes 401 …» con zona `NORTE` por Obras, el residente elabora y presenta la planilla del mes y el cliente la aprueba (saga 008); comprueba en `reportes_db` que la obra aparece en `rpt_obra_resumen` en menos de 10 s con sus datos y avance 0, que pasa a `EN_EJECUCION`, la fila `APROBADA` de `rpt_planilla` (neto 15.770, monto del periodo 19.000, avance 19 %), el avance igual al de Obras y la fila `PENDIENTE` de `rpt_cobro` con número, cliente y zona. **Carga inicial:** corre `ia-carga-inicial` (o el comando de la variable `CARGA_INICIAL`, por ejemplo `cd ../services/ia && uv run python -m ia.carga_inicial`) con el cliente `ia-reportes` real, comprueba las 3 obras de los datos de prueba con tantas planillas, cobros y movimientos como tienen en ese momento Obras, Finanzas y Materiales (leídos de sus `GET`, no números fijos: una prueba manual puede haber aprobado otra planilla) y el mismo avance y zona que Obras, y que una segunda corrida deja las mismas filas y el mismo consumo. Lee `reportes_db` con `psql-cli` (solo `SELECT`). Deja la obra de prueba creada: úsala solo en desarrollo.
+
+## Prueba de punta a punta de la saga «aprobar planilla» (008)
+
+Con el entorno levantado y los servicios corriendo (Obras, Materiales, Finanzas con `mensajeria:consumir` **y** `mensajeria:publicar`, y el gateway):
+
+```powershell
+node pruebas/saga.mjs
+```
+
+Registra una obra nueva («Prueba saga 008 …»), el residente elabora y presenta la planilla del mes, el cliente la aprueba por el portal (REST de Obras) y comprueba: planilla `APROBADA` con `COB-AAAA-NNNN`, cobro `PENDIENTE` por el neto que vence a los 30 días, reserva consumida (saldo, cobrado y reservado), avance de la obra y periodo cerrado en Materiales (`409 PERIODO_CERRADO`). Deja esos datos creados (y un material `PRB-SAGA-…` si el catálogo no tenía ninguno activo): úsala solo en desarrollo.
+).Matches[0].Groups[1].Value
+(Invoke-RestMethod -Method Post http://localhost:8080/realms/supervision/protocol/openid-connect/token -Body @{ grant_type = 'client_credentials'; client_id = 'ia-agentes'; client_secret = $s }).access_token
+```
+
+`node pruebas/humo.mjs` comprueba que el token trae `agente_ia` (y ningún rol de persona), `azp = ia-agentes` y la audiencia, y que el cliente no permite iniciar sesión a una persona. Nunca subas el secreto ni lo pegues en un *issue* o *pull request*.
+
 ### Base de reportes (401) en la instalación local de PostgreSQL
 
 El contenedor (perfil `bases`) crea solo, con el volumen vacío, el usuario `ia` (contraseña `POSTGRES_IA_CLAVE` de `.env`) y la base `reportes_db`, dueña de ese usuario (`postgres/init-reportes.sh`). En tu PostgreSQL instalado en el 5433 hazlo una vez a mano, como `postgres`, con la misma contraseña que pusiste en `.env`:
