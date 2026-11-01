@@ -32,6 +32,7 @@ node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (
 node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
+node semilla/eventos-ia.mjs       # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
 docker compose config -q          # valida el docker-compose.yml
 ```
 
@@ -49,6 +50,7 @@ postgres/init.sql         bases obras_db y finanzas_db (perfil bases)
 postgres/init-reportes.sh usuario ia y base reportes_db, dueña de ia (401; contraseña POSTGRES_IA_CLAVE de .env)
 postgres/vaciar-reportes.sql vacía el modelo de lectura en recargar (401; lo corre el servicio psql-cli)
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
+mongo/vaciar-ia.js        503: vacía ia_db.consumo_atipico en recargar (lo corre el servicio mongo-cli)
 ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
@@ -65,6 +67,7 @@ semilla/
   recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)
   comun.ps1 · comun.sh    pasos comunes de los dos scripts (uno por lenguaje, mismo comportamiento)
   plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
+  eventos-ia.mjs          503: vuelve a publicar en la cola ia el MovimientoRegistrado de las salidas 10033 y 20018
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 docs/                     estructura, contratos y tareas por funcionalidad
 ```

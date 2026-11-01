@@ -225,6 +225,21 @@ services:
     command: ["--version"]
     restart: "no"
 
+  # 503 · mongosh contra el MongoDB de la máquina (instalación local o perfil bases) para vaciar ia_db.consumo_atipico en
+  # "recargar". Herramienta de una sola vez, como psql-cli:
+  # docker compose --profile herramientas run --rm mongo-cli /vaciar-ia.js
+  mongo-cli:
+    image: mongo:8.0
+    profiles: ["herramientas"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./mongo/vaciar-ia.js:/vaciar-ia.js:ro
+    entrypoint: ["mongosh", "--quiet", "mongodb://host.docker.internal:27017/ia_db?directConnection=true"]
+    # Sin argumentos solo comprueba la conexión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--eval", "db.runCommand({ ping: 1 }).ok"]
+    restart: "no"
+
   # 503 (y 502) · Modelo de lenguaje local para ia-api e ia-worker (IA_OLLAMA_URL=http://ollama:11434). Perfil propio:
   # solo para quien usa IA_LLM_PROVEEDOR=ollama. Los modelos quedan en el volumen datos-ollama (qwen3:8b, unos 5 GB):
   # se descargan una vez con scripts/descargar-modelo.*. El puerto se publica solo en 127.0.0.1 (para el servicio de IA

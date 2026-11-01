@@ -31,6 +31,9 @@ if ($LASTEXITCODE -ne 0) { exit 1 }
 Paso 'Vaciar la base de reportes de IA (reportes_db, 401)'
 $reportesVacia = Vaciar-Reportes
 
+Paso 'Vaciar los consumos atípicos de IA (ia_db.consumo_atipico, 403)'
+Vaciar-Atipicos
+
 Paso 'Borrar las fotos del bucket S3 de desarrollo'
 if ($config.Fotos) {
     Ejecutar-S3 @('s3', 'rm', "s3://$($config.Bucket)/fotos/", '--recursive', '--only-show-errors') | ForEach-Object { Write-Host $_ }
@@ -65,3 +68,5 @@ if ($reportesVacia) {
 }
 Write-Host '  docker compose --profile ia-carga run --rm ia-carga-inicial     (en infra)'
 Write-Host '  o, en services/ia: uv run python -m ia.carga_inicial'
+Write-Host 'Después, con ia-worker corriendo, los eventos de prueba de IA (consumos atípicos, 503):'
+Write-Host '  node semilla/eventos-ia.mjs     (en infra)'

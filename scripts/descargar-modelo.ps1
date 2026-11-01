@@ -1,4 +1,4 @@
-# 503 · Descarga el modelo de lenguaje en el servicio ollama (volumen datos-ollama). Uso: ./scripts/descargar-modelo.ps1 [-Modelo qwen3:8b]
+﻿# 503 · Descarga el modelo de lenguaje en el servicio ollama (volumen datos-ollama). Uso: ./scripts/descargar-modelo.ps1 [-Modelo qwen3:8b]
 # Sin -Modelo usa IA_LLM_MODELO de .env y, si está vacío, qwen3:8b (unos 5 GB; la primera vez tarda). Correrlo otra vez
 # solo baja lo que cambió. Si ollama no está corriendo, lo levanta (con la GPU si .env tiene COMPOSE_FILE con docker-compose.gpu.yml).
 param([string]$Modelo = '')
