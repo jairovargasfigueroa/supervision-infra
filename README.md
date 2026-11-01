@@ -186,6 +186,23 @@ Qué hay para cada conjunto del constructor de reportes el día D (valores en `d
 | `PLANILLAS` | aprobadas: obra 1 N.º 1 y 2, obra 2 N.º 1; observada: obra 2 N.º 2 (sin periodo ni montos y sin «Observada por», como la deja la carga inicial). La N.º 3 de la obra 1 está `PRESENTADA` y no llega a la base de reportes |
 | `CONSUMOS_ATIPICOS` | 20018 (obra 2, `M-1`) `PENDIENTE` después de `eventos-ia.mjs` |
 
+### Datos de prueba de los agentes (502)
+
+Escenario del diseño de la 502: obra atrasada con entradas de diario de lluvia, material bajo, salida que supera el stock, cobro vencido, planilla presentada hace más de 7 días, predicción de riesgo `ALTO` (402) y consumo atípico `PENDIENTE` (403). Después de la semilla, la carga inicial y `node semilla/eventos-ia.mjs`, con Obras, Materiales, Finanzas e IA levantados:
+
+```powershell
+node semilla/agentes.mjs      # SEMILLA_FECHA fija D, como en la semilla
+```
+
+1. Registra por la API de Obras (`POST /obras/{obraId}/diario`, como maestro1, el maestro asignado; igual que Sincronización desde el celular) **9 entradas del diario**: 7 de la obra 2 (D − 26, 25, 18, 12, 11, 5 y 2; cinco con lluvia que frena columnas, vigas y la losa alivianada) y 2 de la obra 1 (D − 4 y D − 1, días normales). Ids fijos `b2000000-0000-4000-8000-000000000ONN` (O = obra, NN = correlativo); si el id ya existe, Obras devuelve el existente (correrlo otra vez no duplica). Si ese día ya tenía otra entrada (`409`), avisa y deja la que existe. Los textos y climas son una decisión del equipo para los datos de prueba (`docs/datos-prueba.md`, sección 13, solo pide «días de lluvia que explican el atraso» de la obra 2).
+2. Comprueba por REST, con gerente1, cada caso del escenario y marca `ok`, `FALTA` o `sin ver` (servicio caído). No fuerza ninguno.
+
+Lo demás ya lo traen otros pasos: material `BAJO` (`CEM-IP30` de la obra 2), salida 20018 que superó el stock y cobro `COB-AAAA-0001` `VENCIDO` (semilla, 011); planilla N.º 3 de la obra 1 `PRESENTADA` con `presentada_en` = D − 10 (semilla de Obras de la 501; la ven los agentes con la herramienta MCP `planillas_estado`, no por REST); consumo atípico `PENDIENTE` de la salida 20018 (`eventos-ia.mjs`).
+
+**Falta la predicción `ALTO`.** Con los datos de prueba y el modelo `rr-1.0.0` de la 402, ninguna obra queda en `ALTO` (comprobado el 01/11/2026: la obra 2, la atrasada, sale `BAJO` con 0,06): su única planilla aprobada tiene 16,34 % de avance, así que el «ritmo reciente» (promedio de las últimas 3 planillas aprobadas) es de 16,34 puntos por mes, casi el necesario para terminar a tiempo (17,2). El modelo da `ALTO` recién con un ritmo de unos 3 puntos por mes. No se fuerza: es una decisión pendiente (reporte de la 502).
+
+Después de `recargar` (que vacía el diario con Obras) se vuelve a correr.
+
 ### Cuándo cambian los indicadores
 
 Son exactos **el día D**. Después: desde **D + 11** el cobro de la obra 2 pasa a `VENCIDO`; desde **D + 19** la obra 1 pasa a «en riesgo» y su cobro N.º 2 vence; desde **D + 20** la obra 3 pasa a «en riesgo». Por eso se recarga antes de cada demostración.

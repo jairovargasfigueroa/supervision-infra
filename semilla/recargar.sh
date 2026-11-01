@@ -74,3 +74,5 @@ echo '  docker compose --profile ia-carga run --rm ia-carga-inicial     (en infr
 echo '  o, en services/ia: uv run python -m ia.carga_inicial'
 echo 'Después, con ia-worker corriendo, los eventos de prueba de IA (consumos atípicos, 503):'
 echo '  node semilla/eventos-ia.mjs     (en infra)'
+echo 'Y, con Obras e IA levantados, el diario y el escenario de los agentes (502):'
+echo '  node semilla/agentes.mjs        (en infra)'

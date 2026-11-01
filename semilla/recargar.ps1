@@ -70,3 +70,5 @@ Write-Host '  docker compose --profile ia-carga run --rm ia-carga-inicial     (e
 Write-Host '  o, en services/ia: uv run python -m ia.carga_inicial'
 Write-Host 'Después, con ia-worker corriendo, los eventos de prueba de IA (consumos atípicos, 503):'
 Write-Host '  node semilla/eventos-ia.mjs     (en infra)'
+Write-Host 'Y, con Obras e IA levantados, el diario y el escenario de los agentes (502):'
+Write-Host '  node semilla/agentes.mjs        (en infra)'

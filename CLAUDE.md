@@ -33,6 +33,7 @@ node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga i
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
 node semilla/eventos-ia.mjs       # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
+node semilla/agentes.mjs          # 502: entradas del diario de prueba (Obras, como maestro1) y comprobación del escenario de los agentes
 docker compose config -q          # valida el docker-compose.yml
 ```
 
@@ -68,6 +69,7 @@ semilla/
   comun.ps1 · comun.sh    pasos comunes de los dos scripts (uno por lenguaje, mismo comportamiento)
   plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
   eventos-ia.mjs          503: vuelve a publicar en la cola ia el MovimientoRegistrado de las salidas 10033 y 20018
+  agentes.mjs             502: diario de obra de prueba por la API de Obras y comprobación del escenario de los agentes
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 docs/                     estructura, contratos y tareas por funcionalidad
 ```
