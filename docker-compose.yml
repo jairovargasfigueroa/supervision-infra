@@ -36,6 +36,16 @@ x-ia-entorno: &ia-entorno
   IA_OLLAMA_URL: ${IA_OLLAMA_URL:-http://ollama:11434}
   # Secreto: solo en infra/.env (vacío en .env.example). Con anthropic y sin clave, el servicio no arranca.
   IA_ANTHROPIC_API_KEY: ${IA_ANTHROPIC_API_KEY:-}
+  # 501 · Cliente MCP (host de los agentes, en ia-worker) y servidor MCP propio (POST /mcp de ia-api). El secreto de
+  # ia-agentes solo lo recibe ia-worker (más abajo). Obras, Materiales y Finanzas corren en la máquina.
+  IA_AGENTES_CLIENT_ID: ia-agentes
+  IA_AGENTES_CLIENT_SECRET: ""
+  IA_OBRAS_MCP_URL: http://host.docker.internal:8081/mcp
+  IA_MATERIALES_MCP_URL: http://host.docker.internal:8082/mcp
+  IA_FINANZAS_MCP_URL: http://host.docker.internal:8083/mcp
+  IA_PROPIO_MCP_URL: http://ia-api:8085/mcp
+  # Hosts que acepta el servidor MCP de IA (si no está en la lista, el SDK responde 421): incluye ia-api:8085
+  IA_MCP_HOSTS_PERMITIDOS: localhost:8085,127.0.0.1:8085,ia-api:8085
 
 # Arranca el reenvío de localhost:8080 a Keycloak, espera a que escuche y ejecuta el proceso del servicio
 x-ia-con-keycloak: &ia-con-keycloak >-
@@ -297,6 +307,8 @@ services:
     entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
     environment:
       <<: *ia-entorno
+      # 501: el host de los agentes pide el token de ia-agentes (client credentials) para llamar a /mcp
+      IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET}
     depends_on:
       rabbitmq-init:
         condition: service_completed_successfully
