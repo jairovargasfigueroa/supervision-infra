@@ -21,6 +21,7 @@ cp .env.example .env              # una vez; completa las contraseñas
 docker compose --profile ia up -d --build   # 401: ia-api (8085) e ia-worker desde la imagen de services/ia (opcional)
 docker compose --profile ia-carga run --rm ia-carga-inicial   # 401: carga inicial de reportes_db (una vez, y después de recargar)
 docker compose --profile ollama up -d ollama   # 503: modelo de lenguaje local (con GPU: agrega -f docker-compose.yml -f docker-compose.gpu.yml)
+./scripts/descargar-modelo.ps1    # 503: ollama pull qwen3:8b (o IA_LLM_MODELO) en el servicio ollama; una vez
 ./scripts/estado.ps1              # qué contenedor está sano y GET /salud de cada servicio que corre
 ./scripts/bajar.ps1               # detiene todo (conserva los datos)
 ./scripts/reiniciar-datos.ps1     # borra los volúmenes y levanta todo vacío (pide confirmación)
@@ -55,7 +56,7 @@ rabbitmq/
 keycloak/
   realm-supervision.json  realm importado al iniciar (roles, clientes, usuarios de prueba)
   temas/supervision/      tema de la pantalla de inicio de sesión (extiende keycloak.v2)
-scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica y celular (.ps1 y .sh)
+scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-replica, celular y descargar-modelo (.ps1 y .sh)
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
 pruebas/reportes.mjs      prueba de integración de la base de reportes (401): eventos y carga inicial

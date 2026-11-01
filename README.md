@@ -47,6 +47,10 @@ docker compose --profile ia --profile ollama up -d --build     # IA y Ollama jun
 - Ajustes del contenedor (decisión del equipo): caché de contexto en 8 bits con *flash attention* (`OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_FLASH_ATTENTION=1`) para que el contexto de 16384 de la 503 entre en menos memoria; un modelo cargado y una petición a la vez (`OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`); el modelo queda cargado 30 minutos (`OLLAMA_KEEP_ALIVE`).
 - `./scripts/estado.ps1` muestra si responde y qué modelos tiene.
 
+**Descargar el modelo (una vez):** `./scripts/descargar-modelo.ps1` (en Linux y macOS, `./scripts/descargar-modelo.sh`). Ejecuta `ollama pull` dentro del contenedor con `IA_LLM_MODELO` de `.env` o, si está vacío, `qwen3:8b` (otro: `-Modelo llama3.1:8b`); si `ollama` no está corriendo, lo levanta (con la GPU si tu `.env` tiene el `COMPOSE_FILE` de arriba). El modelo queda en el volumen `datos-ollama` (no se vuelve a bajar al recrear el contenedor; `reiniciar-datos` sí lo borra).
+
+Medido el 01/11/2026 en la computadora del equipo (RTX 3060 Laptop de 6 GB, Docker con 8 GB de RAM), con `docker-compose.gpu.yml`: `qwen3:8b` (5,2 GB) con contexto de 16384 ocupa 6,7 GB y queda repartido 64 % en la GPU y 36 % en la CPU (no entra entero en 6 GB); la primera respuesta tarda unos 60 s (carga del modelo) y después una pregunta corta responde en menos de 1 s y una frase de unas 30 palabras en unos 4 s (8 *tokens* por segundo). Con salida estructurada (`format` con JSON Schema) responde un JSON válido.
+
 ### Carga inicial de la base de reportes (401)
 
 Llena `reportes_db` con lo que ya tienen Obras, Materiales y Finanzas (por ejemplo, los datos de prueba): se corre **una vez** al crear la base, y otra vez después de cada `recargar`. Con los tres servicios levantados en la máquina:
