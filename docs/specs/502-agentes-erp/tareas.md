@@ -6,4 +6,4 @@ El servicio `ollama` (perfil `ollama`, `qwen3:8b`) y las variables `IA_LLM_*` e 
 
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
-- [ ] Datos de prueba para los agentes: una obra atrasada con entradas de diario de lluvia, un material bajo, una salida que supera el stock, un cobro vencido, una planilla presentada hace más de 7 días, una predicción de riesgo `ALTO` (402) y un consumo atípico `PENDIENTE` (403)
+- [x] Datos de prueba para los agentes: una obra atrasada con entradas de diario de lluvia, un material bajo, una salida que supera el stock, un cobro vencido, una planilla presentada hace más de 7 días, predicciones de riesgo (402; con estos datos ninguna sale `ALTO`: ese camino se prueba con datos simulados en IA) y un consumo atípico `PENDIENTE` (403)

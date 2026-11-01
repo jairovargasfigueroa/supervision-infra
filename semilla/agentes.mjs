@@ -1,8 +1,10 @@
 // 502 · Datos de prueba para los agentes del ERP: carga lo que falta y comprueba el escenario completo.
 //
 // Escenario (diseño de la 502, «Infra»): una obra atrasada con entradas de diario de lluvia, un material bajo, una
-// salida que supera el stock, un cobro vencido, una planilla presentada hace más de 7 días, una predicción de riesgo
-// ALTO (402) y un consumo atípico PENDIENTE (403).
+// salida que supera el stock, un cobro vencido, una planilla presentada hace más de 7 días, predicciones de riesgo
+// (402) y un consumo atípico PENDIENTE (403). Con estos datos el modelo rr-1.0.0 da BAJO a la obra 2 (su única
+// planilla aprobada juntó 16 puntos en un mes); el camino «ALTO» se prueba con datos simulados en services/ia
+// (decisión de Jairo, 01/11/2026).
 //
 // Lo único que no traen la semilla (011), la carga inicial (401) ni semilla/eventos-ia.mjs (503) son las entradas del
 // diario de obra (103; docs/datos-prueba.md, sección 13: «días de lluvia que explican el atraso» de la obra 2). Este
@@ -146,11 +148,11 @@ async function comprobar(token) {
     // presentada_en (501) no sale por REST: la semilla de Obras la carga en D − 10 (herramienta MCP planillas_estado)
     return { ok: Boolean(p), detalle: p ? `N.º ${p.numero} (${p.periodo}) PRESENTADA; presentada_en = D − 10 en la semilla de Obras (501)` : 'ninguna PRESENTADA' };
   });
-  await caso('Predicción de riesgo ALTO (402)', async () => {
+  await caso('Predicciones de riesgo (402)', async () => {
     const ids = [1, 2, 3].map(obra).join(',');
     const lista = await pedirJson(`${IA}/predicciones?obraIds=${ids}`, token);
     const niveles = lista.map((p) => `obra ${p.obraId.slice(-1)} ${p.nivel}${p.probabilidad == null ? '' : ` ${p.probabilidad}`}`);
-    return { ok: lista.some((p) => p.nivel === 'ALTO'), detalle: niveles.join(', ') || 'sin predicciones (¿corrió la carga inicial?)' };
+    return { ok: lista.some((p) => p.probabilidad != null), detalle: niveles.join(', ') || 'sin predicciones (¿corrió la carga inicial?)' };
   });
   await caso('Consumo atípico PENDIENTE (403)', async () => {
     const lista = await pedirJson(`${IA}/consumos-atipicos?estado=PENDIENTE`, token);
