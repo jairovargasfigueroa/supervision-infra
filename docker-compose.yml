@@ -111,10 +111,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
       # 401: contraseña del usuario ia, dueño de reportes_db (la usa init-reportes.sh)
       POSTGRES_IA_CLAVE: ${POSTGRES_IA_CLAVE:?falta POSTGRES_IA_CLAVE en .env}
+      # 503: contraseña del rol de solo lectura ia_reportes_lector (la usa init-reportes.sh; sin ella el script falla)
+      POSTGRES_IA_LECTOR_CLAVE: ${POSTGRES_IA_LECTOR_CLAVE:-}
     volumes:
       # Corren en orden de nombre y solo con el volumen vacío
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-bases.sql:ro
       - ./postgres/init-reportes.sh:/docker-entrypoint-initdb.d/02-reportes.sh:ro
+      - ./postgres/lector-reportes.sql:/lector-reportes.sql:ro
       - datos-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d obras_db"]
@@ -206,6 +209,8 @@ services:
       PGPASSWORD: ${POSTGRES_IA_CLAVE}
     volumes:
       - ./postgres/vaciar-reportes.sql:/vaciar-reportes.sql:ro
+      # 503: rol ia_reportes_lector en una base que ya existe (como postgres; comando en el README)
+      - ./postgres/lector-reportes.sql:/lector-reportes.sql:ro
     entrypoint: ["psql", "-v", "ON_ERROR_STOP=1", "-X", "-q"]
     # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
     command: ["--version"]

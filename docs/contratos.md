@@ -57,6 +57,8 @@ Bases `obras_db` y `finanzas_db` (`postgres/init.sql` en el contenedor; en la in
 
 `reportes_db` (401, servicio de IA) tiene **usuario propio** `ia`, con la contraseña `POSTGRES_IA_CLAVE` de `.env`, y es su dueño (crea las tablas con Alembic). En el contenedor lo hace `postgres/init-reportes.sh`; en la instalación local, a mano (README, «Base de reportes»). URL para el `.env` de IA: `postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db`.
 
+Rol de solo lectura **`ia_reportes_lector`** (503): `LOGIN` y `default_transaction_read_only = on`, contraseña `POSTGRES_IA_LECTOR_CLAVE` de `.env` (`postgres/lector-reportes.sql`; en el contenedor lo corre `init-reportes.sh`, en la instalación local o en un volumen anterior, el comando del README). Sus `SELECT` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` los da la migración `0002` del servicio de IA (nada sobre `evento_aplicado` ni `carga_inicial`). URL para el `.env` de IA: `IA_REPORTES_DB_URL_LECTURA=postgresql+psycopg://ia_reportes_lector:<POSTGRES_IA_LECTOR_CLAVE>@localhost:5433/reportes_db`.
+
 ## RabbitMQ: exchange, colas y enlaces
 
 Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`) y 010 (cola `notificaciones`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.

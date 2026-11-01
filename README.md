@@ -54,6 +54,20 @@ CREATE DATABASE reportes_db OWNER ia;
 
 El servicio de IA se conecta con `IA_REPORTES_DB_URL=postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db` y crea sus tablas con `alembic upgrade head`. Si ya tenías el volumen de PostgreSQL del contenedor de antes de la 401, el script no vuelve a correr: crea el usuario y la base con las mismas dos líneas (`docker compose exec postgres psql -U postgres`).
 
+### Usuario de solo lectura de los reportes (503)
+
+El constructor de reportes del servicio de IA lee `reportes_db` con el rol **`ia_reportes_lector`** (`LOGIN`, `default_transaction_read_only = on`, contraseña `POSTGRES_IA_LECTOR_CLAVE` de `.env`). Lo crea `postgres/lector-reportes.sql`, que es idempotente (si el rol existe, le vuelve a poner la contraseña). Los permisos `SELECT` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` los da la migración `0002` del servicio de IA, que **falla si el rol no existe**: créalo antes de levantar `ia-api` con el código de la 503.
+
+- Contenedor nuevo (perfil `bases`, volumen vacío): lo hace solo `init-reportes.sh` (sin `POSTGRES_IA_LECTOR_CLAVE` el script se detiene).
+- PostgreSQL instalado en el 5433, o volumen del contenedor que ya existía: una vez, como superusuario, con el servicio `psql-cli` (no hace falta tener `psql` instalado):
+
+```powershell
+# PowerShell, desde infra/ (POSTGRES_IA_LECTOR_CLAVE de .env; la clave del superusuario postgres de tu instalación)
+docker compose --profile herramientas run --rm -e PGUSER=postgres -e PGPASSWORD='<clave de postgres>' -e PGDATABASE=postgres psql-cli -v clave='<POSTGRES_IA_LECTOR_CLAVE>' -f /lector-reportes.sql
+```
+
+En Git Bash antepón `MSYS_NO_PATHCONV=1` (si no, convierte `/lector-reportes.sql` en una ruta de Windows). El servicio de IA lo usa con `IA_REPORTES_DB_URL_LECTURA=postgresql+psycopg://ia_reportes_lector:<POSTGRES_IA_LECTOR_CLAVE>@localhost:5433/reportes_db`.
+
 Versiones, variables de cada proyecto y orden para levantar todo: `docs/entorno-local.md` del repo `supervision-docs`. Detalle de este repo: `CLAUDE.md` y `docs/`.
 
 ## DynamoDB Local (101)
