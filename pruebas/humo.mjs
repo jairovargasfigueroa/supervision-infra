@@ -193,9 +193,9 @@ prueba('Realm: español, tema supervision, política de contraseñas y fuerza br
   afirmar(realm.accessTokenLifespan === 300 && realm.ssoSessionMaxLifespan === 36000, 'duración de token o sesión');
 });
 
-prueba('Realm: existen los seis roles', async () => {
+prueba('Realm: existen los seis roles de las personas y agente_ia (501)', async () => {
   const roles = (await adminKeycloak('/roles')).map((r) => r.name);
-  for (const rol of ROLES) afirmar(roles.includes(rol), `falta el rol ${rol}`);
+  for (const rol of [...ROLES, 'agente_ia']) afirmar(roles.includes(rol), `falta el rol ${rol}`);
 });
 
 prueba('Realm: clientes públicos erp, portal y app-obra con PKCE S256 y sin direct access grants', async () => {
@@ -290,6 +290,46 @@ prueba('Realm: el cliente ia-reportes (401) solo da client credentials y su toke
     cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
       cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
     'flujos del cliente ia-reportes',
+  );
+});
+
+prueba('Realm: el cliente ia-agentes (501) solo da client credentials y su token trae agente_ia y plataforma-api', async () => {
+  const pedir = (cuerpo) =>
+    fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(cuerpo),
+    });
+  afirmar(env.IA_AGENTES_CLIENT_SECRET, 'falta IA_AGENTES_CLIENT_SECRET en .env');
+  const respuesta = await pedir({
+    grant_type: 'client_credentials',
+    client_id: 'ia-agentes',
+    client_secret: env.IA_AGENTES_CLIENT_SECRET,
+  });
+  afirmar(respuesta.ok, `client_credentials de ia-agentes: ${respuesta.status} (¿se recreó Keycloak después de cambiar el secreto?)`);
+  const tokens = await respuesta.json();
+  const datos = leerToken(tokens.access_token);
+  afirmar(datos.azp === 'ia-agentes', `azp: ${datos.azp}`);
+  afirmar([datos.aud].flat().includes('plataforma-api'), `aud: ${datos.aud}`);
+  afirmar(datos.realm_access?.roles.includes('agente_ia'), `roles: ${datos.realm_access?.roles}`);
+  // Solo agente_ia: ningún rol de persona (así ninguna ruta REST lo acepta)
+  for (const rol of ROLES) afirmar(!datos.realm_access?.roles.includes(rol), `trae el rol de persona ${rol}`);
+  afirmar(datos.iss === `${KEYCLOAK}/realms/supervision`, `iss: ${datos.iss}`);
+  afirmar(tokens.expires_in === 300, `expires_in: ${tokens.expires_in}`);
+  afirmar((await pedir({ grant_type: 'client_credentials', client_id: 'ia-agentes', client_secret: 'otro' })).status === 401, 'aceptó un secreto incorrecto');
+  const directo = await pedir({
+    grant_type: 'password',
+    client_id: 'ia-agentes',
+    client_secret: env.IA_AGENTES_CLIENT_SECRET,
+    username: 'gerente1',
+    password: 'Prueba123!',
+  });
+  afirmar(!directo.ok, `aceptó direct access grants: ${directo.status}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=ia-agentes');
+  afirmar(
+    cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
+      cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
+    'flujos del cliente ia-agentes',
   );
 });
 

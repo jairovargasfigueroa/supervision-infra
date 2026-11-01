@@ -54,6 +54,10 @@
       {
         "name": "cliente",
         "description": "Cliente de la constructora (portal)"
+      },
+      {
+        "name": "agente_ia",
+        "description": "Agentes de IA (service account de ia-agentes, 501): solo /mcp de cada servicio, nunca las rutas REST"
       }
     ]
   },
@@ -207,6 +211,35 @@
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "${IA_REPORTES_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "ia-agentes",
+      "name": "IA: agentes del ERP, cliente MCP (501 y 502)",
+      "description": "Solo client credentials, con el rol agente_ia (solo lo acepta /mcp de cada servicio). El secreto sale de IA_AGENTES_CLIENT_SECRET (infra/.env) al importar el realm.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${IA_AGENTES_CLIENT_SECRET}",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -431,6 +464,15 @@
       "realmRoles": [
         "default-roles-supervision",
         "gerente"
+      ]
+    },
+    {
+      "username": "service-account-ia-agentes",
+      "enabled": true,
+      "serviceAccountClientId": "ia-agentes",
+      "realmRoles": [
+        "default-roles-supervision",
+        "agente_ia"
       ]
     }
   ]
