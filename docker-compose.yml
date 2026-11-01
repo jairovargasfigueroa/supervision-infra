@@ -95,6 +95,8 @@ services:
       KC_HEALTH_ENABLED: "true"
       # 401: el realm importado toma de aquí el secreto del cliente ia-reportes ("secret": "${IA_REPORTES_CLIENT_SECRET}")
       IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
+      # 501: ídem para el cliente ia-agentes ("secret": "${IA_AGENTES_CLIENT_SECRET}")
+      IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET:?falta IA_AGENTES_CLIENT_SECRET en .env}
       KC_HTTP_PORT: "8080"
       # El tema se lee del disco en cada petición: los cambios se ven sin reiniciar
       KC_SPI_THEME__CACHE_THEMES: "false"
