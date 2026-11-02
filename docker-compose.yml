@@ -87,6 +87,8 @@ services:
       RABBITMQ_FINANZAS_CLAVE: ${RABBITMQ_FINANZAS_CLAVE:?falta RABBITMQ_FINANZAS_CLAVE en .env}
       RABBITMQ_IA_CLAVE: ${RABBITMQ_IA_CLAVE:?falta RABBITMQ_IA_CLAVE en .env}
       RABBITMQ_NOTIFICACIONES_CLAVE: ${RABBITMQ_NOTIFICACIONES_CLAVE:?falta RABBITMQ_NOTIFICACIONES_CLAVE en .env}
+      # 201: opcional; vacía, no se crea el usuario n8n (lo exige el servicio n8n del perfil automatizacion)
+      RABBITMQ_N8N_CLAVE: ${RABBITMQ_N8N_CLAVE:-}
     volumes:
       - ./rabbitmq/iniciar.sh:/iniciar.sh:ro
       - ./rabbitmq/definiciones.json:/definiciones.json:ro

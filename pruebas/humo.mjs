@@ -76,8 +76,20 @@ prueba('RabbitMQ: hay un usuario por servicio con permisos en el vhost "/"', asy
   }
 });
 
+prueba('RabbitMQ: el usuario n8n (201) solo puede leer las colas n8n.*', async () => {
+  if (!env.RABBITMQ_N8N_CLAVE) {
+    avisos.push('sin RABBITMQ_N8N_CLAVE en .env: no se comprobó el usuario n8n (perfil automatizacion, 201)');
+    return;
+  }
+  const permisos = await rabbit('/users/n8n/permissions');
+  afirmar(
+    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.`),
+    `permisos de n8n: ${JSON.stringify(permisos)}`,
+  );
+});
+
 // --- RabbitMQ: exchange, colas y enlaces (1.5) ---
-// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401 y 010).
+// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401, 010 y 201).
 const ENLACES = JSON.parse(readFileSync(fileURLToPath(new URL('./enlaces.json', import.meta.url)), 'utf8'));
 
 prueba('RabbitMQ: exchange plataforma (topic, durable) y colas durables', async () => {
