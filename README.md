@@ -84,7 +84,7 @@ $s = (Select-String -Path .env -Pattern '^IA_AGENTES_CLIENT_SECRET=(.*)$').Match
 
 Los flujos de n8n piden su token con *client credentials* del cliente confidencial `n8n` (roles `automatizacion` y `gerente`, `view-users` de `realm-management`, audiencia `plataforma-api`, 5 minutos). **El secreto no está en el repositorio:** el realm trae `"secret": "${N8N_KEYCLOAK_SECRETO}"` y Keycloak lo toma de la variable del contenedor al importar; n8n lo recibe en su credencial OAuth2 por `CREDENTIALS_OVERWRITE_DATA`.
 
-1. En `infra/.env` pon tu propio valor en `N8N_KEYCLOAK_SECRETO` (solo letras, números, `-` y `_`; en `.env.example` está vacío). Sin él, `docker compose` no arranca (lo exige el servicio `keycloak`).
+1. En `infra/.env` pon tu propio valor en `N8N_KEYCLOAK_SECRETO` (solo letras, números, `-` y `_`; en `.env.example` está vacío). Sin él, el resto del entorno funciona igual: Keycloak importa el cliente `n8n` con un secreto al azar que nadie conoce (nunca vacío, que Keycloak aceptaría), así que el cliente queda sin uso, y el servicio `n8n` no arranca.
 2. Keycloak solo importa el realm si no existe: para que tome el rol `automatizacion` y el cliente `n8n`, recréalo con `docker compose up -d --force-recreate keycloak` (menos de un minuto; se pierden las sesiones abiertas y lo cambiado a mano en el panel; los usuarios de prueba vuelven con su `id` fijo). Lo mismo si cambias el secreto.
 3. `node pruebas/humo.mjs` comprueba que el token trae `automatizacion`, `gerente` (y ningún otro rol de persona), `view-users`, `azp = n8n`, la audiencia y el emisor, que lee el correo de cliente1 y que el cliente no permite iniciar sesión a una persona.
 

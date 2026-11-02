@@ -98,6 +98,9 @@ services:
   # Base H2 dentro del contenedor (sin volumen): al recrearlo (bajar y levantar) el realm se vuelve a importar.
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.1
+    # 201: sin N8N_KEYCLOAK_SECRETO en .env, el cliente n8n se importa con un secreto al azar (nadie lo conoce y el
+    # cliente queda sin uso) en lugar de uno vacío, que Keycloak aceptaría. Así el compose no exige la variable.
+    entrypoint: ["/bin/bash", "-c", "export N8N_KEYCLOAK_SECRETO=\"$${N8N_KEYCLOAK_SECRETO:-sin-configurar-$$(</proc/sys/kernel/random/uuid)}\"; exec /opt/keycloak/bin/kc.sh \"$$@\"", "--"]
     command: ["start-dev", "--import-realm"]
     ports:
       - "8080:8080"
@@ -109,8 +112,8 @@ services:
       IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
       # 501: ídem para el cliente ia-agentes ("secret": "${IA_AGENTES_CLIENT_SECRET}")
       IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET:?falta IA_AGENTES_CLIENT_SECRET en .env}
-      # 201: ídem para el cliente n8n ("secret": "${N8N_KEYCLOAK_SECRETO}")
-      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO:?falta N8N_KEYCLOAK_SECRETO en .env}
+      # 201: ídem para el cliente n8n ("secret": "${N8N_KEYCLOAK_SECRETO}"); opcional (ver entrypoint)
+      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO:-}
       KC_HTTP_PORT: "8080"
       # El tema se lee del disco en cada petición: los cambios se ven sin reiniciar
       KC_SPI_THEME__CACHE_THEMES: "false"
