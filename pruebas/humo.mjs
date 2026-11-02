@@ -76,14 +76,14 @@ prueba('RabbitMQ: hay un usuario por servicio con permisos en el vhost "/"', asy
   }
 });
 
-prueba('RabbitMQ: el usuario n8n (201) solo puede leer las colas n8n.*', async () => {
+prueba('RabbitMQ: el usuario n8n (201) solo puede leer sus dos colas', async () => {
   if (!env.RABBITMQ_N8N_CLAVE) {
     avisos.push('sin RABBITMQ_N8N_CLAVE en .env: no se comprobó el usuario n8n (perfil automatizacion, 201)');
     return;
   }
   const permisos = await rabbit('/users/n8n/permissions');
   afirmar(
-    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.`),
+    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.cobro-(emitido|pagado)$`),
     `permisos de n8n: ${JSON.stringify(permisos)}`,
   );
 });

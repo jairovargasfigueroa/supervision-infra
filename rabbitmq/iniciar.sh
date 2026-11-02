@@ -30,6 +30,6 @@ crear notificaciones "$RABBITMQ_NOTIFICACIONES_CLAVE"
 # declara, no enlaza ni publica nada. Sin RABBITMQ_N8N_CLAVE (quien no usa el perfil automatizacion) no se crea.
 if [ -n "${RABBITMQ_N8N_CLAVE:-}" ]; then
   api -X PUT -d "{\"password\":\"$RABBITMQ_N8N_CLAVE\",\"tags\":\"\"}" "$RABBITMQ_URL/api/users/n8n"
-  api -X PUT -d '{"configure":"^$","write":"^$","read":"^n8n\."}' "$RABBITMQ_URL/api/permissions/%2F/n8n"
-  echo "usuario n8n listo (solo lectura de n8n.*)"
+  api -X PUT -d '{"configure":"^$","write":"^$","read":"^n8n\\.cobro-(emitido|pagado)$"}' "$RABBITMQ_URL/api/permissions/%2F/n8n"
+  echo "usuario n8n listo (solo lectura de n8n.cobro-emitido y n8n.cobro-pagado)"
 fi

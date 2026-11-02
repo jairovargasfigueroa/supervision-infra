@@ -26,7 +26,7 @@ Un usuario por servicio, con permisos de configurar, escribir y leer en el vhost
 | `finanzas` | `RABBITMQ_FINANZAS_CLAVE` | services/finanzas (`RABBITMQ_USER` / `RABBITMQ_PASSWORD`) |
 | `ia` | `RABBITMQ_IA_CLAVE` | services/ia (capa 4, `IA_RABBITMQ_URL`) |
 | `notificaciones` | `RABBITMQ_NOTIFICACIONES_CLAVE` | services/notificaciones (010, `RABBITMQ_URL`) |
-| `n8n` | `RABBITMQ_N8N_CLAVE` | n8n (201): credencial «RabbitMQ» de los flujos, solo lee las colas `n8n.*`. Si la variable está vacía, `rabbitmq-init` no crea el usuario (el perfil `automatizacion` la exige) |
+| `n8n` | `RABBITMQ_N8N_CLAVE` | n8n (201): credencial «RabbitMQ» de los flujos; permiso solo de lectura sobre `n8n.cobro-emitido` y `n8n.cobro-pagado` (sin configurar ni escribir). Si la variable está vacía, `rabbitmq-init` no crea el usuario (el perfil `automatizacion` la exige) |
 
 El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servicios usan su propio usuario.
 
