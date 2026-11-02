@@ -13,7 +13,7 @@ const destino = {
 };
 const puertoEscucha = Number(process.env.REENVIO_ESCUCHA_PUERTO ?? 8080);
 
-const servidor = net.createServer((entrante) => {
+function reenviar(entrante) {
   const saliente = net.connect(destino);
   entrante.pipe(saliente);
   saliente.pipe(entrante);
@@ -25,8 +25,18 @@ const servidor = net.createServer((entrante) => {
   saliente.on('error', cerrar);
   entrante.on('close', cerrar);
   saliente.on('close', cerrar);
-});
+}
 
-servidor.listen(puertoEscucha, '127.0.0.1', () => {
-  console.log(`reenvío 127.0.0.1:${puertoEscucha} → ${destino.host}:${destino.port}`);
-});
+// «localhost» se resuelve primero a ::1 (Node prefiere el orden del sistema): se escucha en las dos direcciones de
+// bucle local y en ninguna otra. Si el contenedor no tiene IPv6, basta con 127.0.0.1.
+for (const direccion of ['127.0.0.1', '::1']) {
+  net
+    .createServer(reenviar)
+    .on('error', (error) => {
+      if (direccion === '::1') console.log(`reenvío sin ::1 (${error.code})`);
+      else throw error;
+    })
+    .listen(puertoEscucha, direccion, () => {
+      console.log(`reenvío ${direccion}:${puertoEscucha} → ${destino.host}:${destino.port}`);
+    });
+}

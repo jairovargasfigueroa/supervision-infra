@@ -414,6 +414,8 @@ services:
       - "8025:8025"
     environment:
       TZ: America/La_Paz
+      # No consulta en internet si hay otra versión
+      MP_DISABLE_VERSION_CHECK: "true"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
