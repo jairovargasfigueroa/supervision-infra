@@ -24,3 +24,15 @@ if version=$(curl -fsS --max-time 3 http://localhost:11434/api/version 2>/dev/nu
 else
   echo "Ollama: no responde (http://localhost:11434; perfil ollama)"
 fi
+# 201 · Cobranza automática (perfil automatizacion): n8n y Mailpit
+if curl -fsS --max-time 3 http://localhost:5678/healthz/readiness >/dev/null 2>&1; then
+  echo "n8n: sano (http://localhost:5678)"
+else
+  echo "n8n: no responde (http://localhost:5678; perfil automatizacion)"
+fi
+if mailpit=$(curl -fsS --max-time 3 http://localhost:8025/api/v1/info 2>/dev/null); then
+  mensajes=$(echo "$mailpit" | grep -o '"Messages":[0-9]*' | cut -d: -f2)
+  echo "Mailpit: responde (${mensajes:-0} correos; http://localhost:8025)"
+else
+  echo "Mailpit: no responde (http://localhost:8025; perfil automatizacion)"
+fi

@@ -30,6 +30,8 @@ docker compose --profile ollama up -d ollama   # 503: modelo de lenguaje local (
 node pruebas/humo.mjs             # comprueba realm (con la sesión offline de la app), colas, enlaces y DynamoDB Local contra lo que está corriendo
 node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (008; con los servicios corriendo)
 node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
+./scripts/levantar.ps1 -Perfil automatizacion   # 201: además n8n (5678) y Mailpit (8025); variables en el README
+node pruebas/cobranza.mjs         # 201: cobranza automática de punta a punta (con los servicios, n8n y Mailpit)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
 node semilla/eventos-ia.mjs       # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
@@ -64,6 +66,7 @@ scripts/                  levantar, estado, bajar, reiniciar-datos, mongo-local-
 pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
 pruebas/reportes.mjs      prueba de integración de la base de reportes (401): eventos y carga inicial
+pruebas/cobranza.mjs      prueba de punta a punta de la cobranza automática (201): correos en Mailpit y envíos en Finanzas
 semilla/
   semilla.ps1 · .sh       carga los datos de prueba (011): guardas, D, Keycloak, Obras → Finanzas → Materiales, fotos, resumen
   recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)
@@ -79,7 +82,8 @@ docs/                     estructura, contratos y tareas por funcionalidad
 
 - **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»).
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
-- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`); igual el de `ia-agentes` (501, `${IA_AGENTES_CLIENT_SECRET}`).
+- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`); igual el de `ia-agentes` (501, `${IA_AGENTES_CLIENT_SECRET}`) y el de `n8n` (201, `${N8N_KEYCLOAK_SECRETO}`; si falta, Keycloak le pone uno al azar). Las credenciales de n8n se guardan sin secretos y los reciben por `CREDENTIALS_OVERWRITE_DATA`.
+- Las variables nuevas de un perfil opcional van con valor por defecto vacío (`${VAR:-}`): ningún perfil puede romper `docker compose` de los demás.
 - Las colas y enlaces de RabbitMQ siguen `docs/contratos/eventos.md` de la carpeta general (y las specs que agregan colas). Un enlace nuevo se agrega en `rabbitmq/definiciones.json`, en `docs/contratos.md` y en `pruebas/humo.mjs`.
 - Los cambios al realm se hacen en `keycloak/realm-supervision.json` y se comprueban con `./scripts/reiniciar-datos.ps1` (Keycloak solo importa un realm que no existe).
 - Los archivos montados en contenedores (`.sh`, `.conf`, `.json`, `.js`) van con fin de línea LF (`.gitattributes`).
