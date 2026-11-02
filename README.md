@@ -20,6 +20,8 @@ En Linux y macOS: `cp .env.example .env`, `./scripts/levantar.sh [--perfil bases
 | PostgreSQL (perfil `bases`) | `localhost:5433` |
 | MongoDB (perfil `bases`) | `localhost:27017` |
 | DynamoDB Local (Sincronización, 101) | http://localhost:8000 |
+| n8n (perfil `automatizacion`, 201) | http://localhost:5678 (cuenta de propietario `N8N_PROPIETARIO_CORREO` de `.env`) |
+| Mailpit (perfil `automatizacion`, 201) | http://localhost:8025 (buzón de prueba; SMTP en `localhost:1025`) |
 
 Si ya tienes PostgreSQL en el 5433 o MongoDB en el 27017 instalados en la máquina, **no uses el perfil `bases`**: los puertos chocan. Tu MongoDB instalado debe ser *replica set* (lo necesitan las transacciones de Materiales): ejecuta una vez, en PowerShell como administrador, `./scripts/mongo-local-replica.ps1` (en Linux o macOS, `sudo ./scripts/mongo-local-replica.sh`). La URI queda `mongodb://localhost:27017/materiales_db?replicaSet=rs0`.
 
