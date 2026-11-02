@@ -344,9 +344,87 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # 201 · Automatización de cobranza (perfil automatizacion): n8n con los tres flujos de n8n/flujos y Mailpit como buzón.
+  # Al arrancar, n8n/iniciar.sh comprueba las variables, arranca el reenvío de localhost:8080 a Keycloak (mismo emisor
+  # de tokens que validan los servicios), importa credenciales y flujos, los publica y arranca n8n. Obras y Finanzas
+  # corren en la máquina (host.docker.internal), como para el perfil ia. Las variables que solo usa este perfil van con
+  # valor por defecto vacío para no romper los demás perfiles; si falta alguna, el contenedor se detiene y dice cuál.
+  n8n:
+    image: n8nio/n8n:2.43.7
+    profiles: ["automatizacion"]
+    entrypoint: ["tini", "--", "sh", "/n8n-config/iniciar.sh"]
+    ports:
+      - "5678:5678"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GENERIC_TIMEZONE: America/La_Paz
+      TZ: America/La_Paz
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      # Desde n8n 2.0 viene en true; los flujos leen sus URLs y correos de $env
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # Cuenta de propietario sin paso manual (variables del código de n8n 2.43.7; hash bcrypt, README)
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_PROPIETARIO_CORREO:-}
+      N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_PROPIETARIO_CLAVE_HASH:-}
+      N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_PROPIETARIO_NOMBRE:-Administración}
+      N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_PROPIETARIO_APELLIDO:-Cobranzas}
+      # Secretos de las credenciales: iniciar.sh los pasa a CREDENTIALS_OVERWRITE_DATA (nunca en n8n/credenciales)
+      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO:-}
+      RABBITMQ_N8N_CLAVE: ${RABBITMQ_N8N_CLAVE:-}
+      # Variables de los flujos ($env)
+      FINANZAS_URL: ${N8N_FINANZAS_URL:-http://host.docker.internal:8083}
+      OBRAS_URL: ${N8N_OBRAS_URL:-http://host.docker.internal:8081}
+      KEYCLOAK_URL: http://localhost:8080
+      EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
+      COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:-cobranzas@constructora-andina.test}
+      COBRANZA_CORREO: ${COBRANZA_CORREO:-cobranzas@constructora-andina.test}
+      # Destino del reenvío de localhost:8080 (n8n/reenviar-keycloak.mjs)
+      REENVIO_KEYCLOAK_HOST: ${N8N_REENVIO_KEYCLOAK_HOST:-keycloak}
+      REENVIO_KEYCLOAK_PUERTO: ${N8N_REENVIO_KEYCLOAK_PUERTO:-8080}
+    volumes:
+      - ./n8n:/n8n-config:ro
+      - datos-n8n:/home/node/.n8n
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5678/healthz/readiness').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      # Importar y publicar los flujos arranca n8n varias veces antes del servidor
+      start_period: 120s
+    restart: unless-stopped
+
+  # 201 · Buzón de prueba: recibe por SMTP (mailpit:1025) todos los correos de desarrollo; nunca salen a internet.
+  # Interfaz y API en http://localhost:8025 (las usan las pruebas). Sin volumen: los correos se pierden al recrearlo.
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    profiles: ["automatizacion"]
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      TZ: America/La_Paz
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
 volumes:
   datos-rabbitmq:
   datos-postgres:
   datos-mongo:
   datos-dynamodb:
   datos-ollama:
+  datos-n8n:

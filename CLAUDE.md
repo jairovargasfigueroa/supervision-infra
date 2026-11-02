@@ -53,6 +53,7 @@ postgres/vaciar-reportes.sql vacía el modelo de lectura en recargar (401; lo co
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
 mongo/vaciar-ia.js        503: vacía ia_db.consumo_atipico en recargar (lo corre el servicio mongo-cli)
 ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
+n8n/                      201 (perfil automatizacion): iniciar.sh, reenviar-keycloak.mjs, flujos/ y credenciales/ (sin secretos)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
   iniciar.sh              importa las definiciones y crea los usuarios por servicio desde .env (API del panel)
