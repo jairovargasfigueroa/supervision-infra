@@ -12,6 +12,8 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | MongoDB (perfil `bases`) | 27017 |
 | Servicio de IA, `ia-api` (perfil `ia`, 401) | 8085 |
 | Ollama (perfil `ollama`, 503) | 11434, solo en `127.0.0.1` (en la red de Compose, `http://ollama:11434`) |
+| n8n (perfil `automatizacion`, 201) | 5678 (editor y panel de ejecuciones) |
+| Mailpit (perfil `automatizacion`, 201) | 1025 (SMTP) · 8025 (buzón web y API) |
 
 ## RabbitMQ: usuarios
 
@@ -24,6 +26,7 @@ Un usuario por servicio, con permisos de configurar, escribir y leer en el vhost
 | `finanzas` | `RABBITMQ_FINANZAS_CLAVE` | services/finanzas (`RABBITMQ_USER` / `RABBITMQ_PASSWORD`) |
 | `ia` | `RABBITMQ_IA_CLAVE` | services/ia (capa 4, `IA_RABBITMQ_URL`) |
 | `notificaciones` | `RABBITMQ_NOTIFICACIONES_CLAVE` | services/notificaciones (010, `RABBITMQ_URL`) |
+| `n8n` | `RABBITMQ_N8N_CLAVE` | n8n (201): credencial «RabbitMQ» de los flujos; permiso solo de lectura sobre `n8n.cobro-emitido` y `n8n.cobro-pagado` (sin configurar ni escribir). Si la variable está vacía, `rabbitmq-init` no crea el usuario (el perfil `automatizacion` la exige) |
 
 El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servicios usan su propio usuario.
 
@@ -35,7 +38,7 @@ El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servi
 
 Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http://localhost:8080/realms/supervision`.
 
-- Roles del realm: `admin`, `residente`, `gerente`, `maestro`, `almacenero`, `cliente` y `agente_ia` (501: solo la *service account* de `ia-agentes`; lo acepta únicamente `POST /mcp` de cada servicio).
+- Roles del realm: `admin`, `residente`, `gerente`, `maestro`, `almacenero`, `cliente` `agente_ia` (501: solo la *service account* de `ia-agentes`; lo acepta únicamente `POST /mcp` de cada servicio) y `automatizacion` (201: solo la *service account* de `n8n`; lo aceptan únicamente las rutas de Finanzas que llama n8n).
 - Todos los tokens llevan la audiencia `plataforma-api` (mapper de audiencia en cada cliente).
 - Token de acceso: 5 minutos. Sesión SSO: 10 horas. Sesión *offline*: vale mientras no pase 30 días sin usarse (`offlineSessionIdleTimeout` 2592000 s, 101). Idioma: solo español. Tema de inicio de sesión: `supervision`.
 - Contraseñas: mínimo 8 caracteres, 1 mayúscula, 1 número, distinta del usuario. Bloqueo temporal tras 5 intentos fallidos.
@@ -48,6 +51,7 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 | `gateway` | confidencial, *service account* con `realm-management: view-users` y `view-realm` | — | el gateway lista usuarios por rol (`view-realm` lo exige Keycloak para `GET /roles/{rol}/users`) y lee usuarios. Secreto **solo de desarrollo**: `gateway-secreto-solo-desarrollo` |
 | `ia-reportes` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con el rol de realm `gerente` | — | 401: la carga inicial del servicio de IA pide su token con *client credentials* (trae `gerente`, `azp = ia-reportes` y la audiencia `plataforma-api`) y solo hace `GET` a Obras, Materiales y Finanzas. Secreto en `IA_REPORTES_CLIENT_SECRET` de `.env` (el realm lo toma al importarse: `"secret": "${IA_REPORTES_CLIENT_SECRET}"`); se copia al `.env` de IA. Si cambia, se recrea Keycloak |
 | `ia-agentes` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con el rol de realm `agente_ia` | — | 501 y 502: el servicio de IA (`ia-worker`, host de los agentes) pide su token con *client credentials* (trae `agente_ia`, `azp = ia-agentes` y la audiencia `plataforma-api`; 5 minutos) para llamar a `POST /mcp` de Obras, Materiales, Finanzas e IA. Secreto en `IA_AGENTES_CLIENT_SECRET` de `.env` (el realm lo toma al importarse: `"secret": "${IA_AGENTES_CLIENT_SECRET}"`); se copia al `.env` de IA. Si cambia, se recrea Keycloak |
+| `n8n` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con los roles de realm `automatizacion` y `gerente` y `realm-management: view-users` | — | 201: los flujos de cobranza piden su token con *client credentials* (trae `automatizacion` y `gerente`, `azp = n8n` y la audiencia `plataforma-api`; 5 minutos). `automatizacion` para `GET /cobros/recordatorios`, `POST /cobros/{id}/envios` y `POST /cobros/{id}/nota-cobro` de Finanzas; `gerente` para leer `GET /obras/{id}`, `GET /planillas/{id}` y `GET /cobros/{id}`; `view-users` para `GET /admin/realms/supervision/users/{id}` (nombre y correo del cliente; segunda excepción a la API de administración, junto al gateway). Secreto en `N8N_KEYCLOAK_SECRETO` de `.env` (el realm lo toma al importarse: `"secret": "${N8N_KEYCLOAK_SECRETO}"`; n8n lo recibe por `CREDENTIALS_OVERWRITE_DATA`). Si la variable falta, el `entrypoint` de `keycloak` le pone uno al azar (nunca vacío: Keycloak aceptaría un secreto vacío) y el cliente queda sin uso. Si cambia, se recrea Keycloak |
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
 
@@ -63,18 +67,29 @@ Rol de solo lectura **`ia_reportes_lector`** (503): `LOGIN` y `default_transacti
 
 ## RabbitMQ: exchange, colas y enlaces
 
-Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`) y 010 (cola `notificaciones`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.
+Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`), 010 (cola `notificaciones`) y 201 (colas `n8n.*` y `CobroPagado` en `ia`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.
 
 | Cola | Enlaces (claves de enrutamiento) |
 |---|---|
 | `obras` | `evento.finanzas.ContratoRegistrado`, `evento.finanzas.ContratoRechazado`, `evento.finanzas.SaldoReservado`, `evento.finanzas.SaldoInsuficiente`, `evento.materiales.ConsumosCerrados`, `evento.materiales.CierreFallido`, `evento.finanzas.CobroEmitido`, `evento.finanzas.CobroFallido` |
 | `materiales` | `evento.obras.ObraRegistrada`, `comando.materiales.CerrarConsumos`, `comando.materiales.ReabrirConsumos` |
 | `finanzas` | `evento.obras.ObraRegistrada`, `comando.finanzas.ReservarSaldo`, `comando.finanzas.EmitirCobro`, `comando.finanzas.LiberarReserva` |
-| `ia` | `evento.obras.ObraRegistrada`, `evento.finanzas.ContratoRegistrado`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.finanzas.CobroEmitido`, `evento.materiales.MovimientoRegistrado` |
+| `ia` | `evento.obras.ObraRegistrada`, `evento.finanzas.ContratoRegistrado`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.finanzas.CobroEmitido`, `evento.materiales.MovimientoRegistrado`, `evento.finanzas.CobroPagado` (201) |
 | `notificaciones` | `evento.obras.ObraRegistrada`, `evento.obras.PlanillaPresentada`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.materiales.StockBajo`, `evento.finanzas.CobroVencido`, `evento.finanzas.ContratoRechazado` |
+| `n8n.cobro-emitido` | `evento.finanzas.CobroEmitido` (201: flujo «Enviar nota de cobro») |
+| `n8n.cobro-pagado` | `evento.finanzas.CobroPagado` (201: flujo «Enviar constancia de pago») |
 | `plataforma.fallidos` | ninguno: los servicios publican ahí directo (exchange por defecto, clave `plataforma.fallidos`) los mensajes que fallan 3 veces |
 
 Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan. Comprobado en la 401 (31/10/2026): la cola `ia` tiene sus 6 enlaces, el usuario `ia` sus permisos y, sin consumidor, guarda los eventos persistentes hasta que el servicio de IA los lea (`pruebas/humo.mjs`; la prueba solo publica mensajes de prueba en colas vacías y sin consumidores, para no descartar mensajes reales).
+
+Las colas `n8n.*` las lee n8n con el nodo *RabbitMQ Trigger* sin declararlas («Assert Queue» desactivado) y confirma cada mensaje al terminar la ejecución, haya salido bien o mal («Delete From Queue When» = «Execution Finishes»): n8n no usa `x-intentos` ni `plataforma.fallidos`; una ejecución fallida queda en su panel para reintentarla.
+
+## n8n y correo (201, perfil `automatizacion`)
+
+- **n8n** (`http://localhost:5678`): tres flujos de cobranza, en `n8n/flujos/` con `id` fijo, importados y activados al arrancar el contenedor. Llama a Finanzas (`FINANZAS_URL`, por defecto `http://host.docker.internal:8083`), a Obras (`OBRAS_URL`, `http://host.docker.internal:8081`) y a Keycloak (`KEYCLOAK_URL=http://localhost:8080`, que dentro de su red es un reenvío a `keycloak:8080`: el emisor del token es el mismo que validan los servicios). Finanzas y Obras deben escuchar en todas las interfaces (como para el perfil `ia`).
+- Lo que n8n llama de Finanzas: `GET /cobros/{id}`, `GET /cobros/recordatorios`, `POST /cobros/{id}/nota-cobro` (PDF) y `POST /cobros/{id}/envios`; de Obras: `GET /obras/{id}` y `GET /planillas/{id}`; de Keycloak: `GET /admin/realms/supervision/users/{id}`. Todo con el token del cliente `n8n`.
+- **Mailpit** (`http://localhost:8025`): recibe por SMTP (`mailpit:1025` dentro del Compose, `localhost:1025` desde la máquina) todos los correos de desarrollo; nunca salen a internet. Las pruebas leen su API (`GET /api/v1/messages`, `GET /api/v1/message/{ID}`, `GET /api/v1/message/{ID}/part/{PartID}`).
+- Remitente `COBRANZA_REMITENTE` y copia oculta y resumen a `COBRANZA_CORREO` (`cobranzas@constructora-andina.test` en desarrollo); nombre de la empresa en `EMPRESA_NOMBRE` («Constructora Andina»).
 
 ## Datos de prueba (011)
 

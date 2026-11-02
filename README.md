@@ -20,6 +20,8 @@ En Linux y macOS: `cp .env.example .env`, `./scripts/levantar.sh [--perfil bases
 | PostgreSQL (perfil `bases`) | `localhost:5433` |
 | MongoDB (perfil `bases`) | `localhost:27017` |
 | DynamoDB Local (Sincronización, 101) | http://localhost:8000 |
+| n8n (perfil `automatizacion`, 201) | http://localhost:5678 (cuenta de propietario `N8N_PROPIETARIO_CORREO` de `.env`) |
+| Mailpit (perfil `automatizacion`, 201) | http://localhost:8025 (buzón de prueba; SMTP en `localhost:1025`) |
 
 Si ya tienes PostgreSQL en el 5433 o MongoDB en el 27017 instalados en la máquina, **no uses el perfil `bases`**: los puertos chocan. Tu MongoDB instalado debe ser *replica set* (lo necesitan las transacciones de Materiales): ejecuta una vez, en PowerShell como administrador, `./scripts/mongo-local-replica.ps1` (en Linux o macOS, `sudo ./scripts/mongo-local-replica.sh`). La URI queda `mongodb://localhost:27017/materiales_db?replicaSet=rs0`.
 
@@ -77,6 +79,45 @@ $s = (Select-String -Path .env -Pattern '^IA_AGENTES_CLIENT_SECRET=(.*)$').Match
 ```
 
 `node pruebas/humo.mjs` comprueba que el token trae `agente_ia` (y ningún rol de persona), `azp = ia-agentes` y la audiencia, y que el cliente no permite iniciar sesión a una persona. Nunca subas el secreto ni lo pegues en un *issue* o *pull request*.
+
+### Secreto del cliente `n8n` (201, cobranza automática)
+
+Los flujos de n8n piden su token con *client credentials* del cliente confidencial `n8n` (roles `automatizacion` y `gerente`, `view-users` de `realm-management`, audiencia `plataforma-api`, 5 minutos). **El secreto no está en el repositorio:** el realm trae `"secret": "${N8N_KEYCLOAK_SECRETO}"` y Keycloak lo toma de la variable del contenedor al importar; n8n lo recibe en su credencial OAuth2 por `CREDENTIALS_OVERWRITE_DATA`.
+
+1. En `infra/.env` pon tu propio valor en `N8N_KEYCLOAK_SECRETO` (solo letras, números, `-` y `_`; en `.env.example` está vacío). Sin él, el resto del entorno funciona igual: Keycloak importa el cliente `n8n` con un secreto al azar que nadie conoce (nunca vacío, que Keycloak aceptaría), así que el cliente queda sin uso, y el servicio `n8n` no arranca.
+2. Keycloak solo importa el realm si no existe: para que tome el rol `automatizacion` y el cliente `n8n`, recréalo con `docker compose up -d --force-recreate keycloak` (menos de un minuto; se pierden las sesiones abiertas y lo cambiado a mano en el panel; los usuarios de prueba vuelven con su `id` fijo). Lo mismo si cambias el secreto.
+3. `node pruebas/humo.mjs` comprueba que el token trae `automatizacion`, `gerente` (y ningún otro rol de persona), `view-users`, `azp = n8n`, la audiencia y el emisor, que lee el correo de cliente1 y que el cliente no permite iniciar sesión a una persona.
+
+### Cobranza automática: n8n y Mailpit (201, perfil `automatizacion`)
+
+n8n (`http://localhost:5678`) corre los tres flujos de la cobranza: «Enviar nota de cobro» (cola `n8n.cobro-emitido`), «Enviar constancia de pago» (cola `n8n.cobro-pagado`) y «Recordar cobros» (todos los días a las 08:00 de La Paz). Mailpit (`http://localhost:8025`) recibe todos los correos: en desarrollo nunca salen a internet.
+
+**Una vez, en `infra/.env`** (los demás perfiles no las necesitan; si falta alguna, solo `n8n` se detiene y su registro dice cuál):
+
+| Variable | Qué poner |
+|---|---|
+| `N8N_KEYCLOAK_SECRETO` | secreto del cliente `n8n` (sección anterior; recrea Keycloak después de ponerlo) |
+| `RABBITMQ_N8N_CLAVE` | contraseña del usuario `n8n` de RabbitMQ (la crea `rabbitmq-init` al levantar) |
+| `N8N_ENCRYPTION_KEY` | clave de cifrado de las credenciales de n8n, por ejemplo la salida de `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`. No la cambies después: n8n no podría leer lo que ya guardó (si pasa, borra el volumen `supervision_datos-n8n`; los flujos y credenciales se vuelven a importar) |
+| `N8N_PROPIETARIO_CORREO` | correo de la cuenta de propietario del panel de n8n (cualquiera, no tiene que existir) |
+| `N8N_PROPIETARIO_CLAVE_HASH` | hash **bcrypt** de su contraseña, **entre comillas simples** (lleva `$`). Se genera con la imagen de n8n, sin instalar nada: `docker run --rm -w /usr/local/lib/node_modules/n8n --entrypoint node n8nio/n8n:2.43.7 -e "console.log(require('bcryptjs').hashSync(process.argv[1], 10))" 'TuContraseña1'` |
+
+Opcionales (valores por defecto en `docker-compose.yml`): `N8N_PROPIETARIO_NOMBRE` / `N8N_PROPIETARIO_APELLIDO`, `N8N_FINANZAS_URL` / `N8N_OBRAS_URL` (por defecto `http://host.docker.internal:8083` y `:8081`; llevan el prefijo `N8N_` porque `FINANZAS_URL` y `OBRAS_URL` de este `.env` ya los usan los scripts de la máquina con `localhost`), `EMPRESA_NOMBRE`, `COBRANZA_REMITENTE` y `COBRANZA_CORREO` (copia oculta de cada correo y resumen del día; `cobranzas@constructora-andina.test`).
+
+```powershell
+./scripts/levantar.ps1 -Perfil automatizacion    # todo lo de siempre, más n8n y Mailpit (n8n tarda 1 a 2 minutos)
+./scripts/estado.ps1                              # «n8n: sano» y «Mailpit: responde»
+```
+
+**Qué hace n8n al arrancar** (`n8n/iniciar.sh`, en cada arranque): comprueba las variables, pasa los secretos de `.env` a `CREDENTIALS_OVERWRITE_DATA` (las credenciales de `n8n/credenciales/` no tienen secretos), arranca el reenvío de `localhost:8080` a Keycloak (`n8n/reenviar-keycloak.mjs`: así el token sale con el emisor `http://localhost:8080/realms/supervision` que validan los servicios), importa las credenciales y los flujos de `n8n/flujos/` con su `id` fijo (`n8n import:credentials` / `import:workflow --separate`), publica cada flujo (`n8n publish:workflow --id=…`; quedan activos sin reiniciar) y arranca n8n. La cuenta de propietario la crea n8n con `N8N_INSTANCE_OWNER_MANAGED_BY_ENV` y las variables `N8N_INSTANCE_OWNER_*` (están en el código de n8n 2.43.7, no en su documentación; comprobado el 02/11/2026): no hay paso manual. Si alguna vez no funcionara, n8n pide crear la cuenta al abrir el panel la primera vez.
+
+**El repositorio manda:** al reiniciar, los flujos se vuelven a importar desde `n8n/flujos/`. Para cambiar un texto o un horario, cámbialo en el editor de n8n, pruébalo y expórtalo al repo (menú del flujo → *Download*, guardado sobre el JSON de `n8n/flujos/` con el mismo `id`); si no, se pierde al reiniciar. Nunca guardes un secreto en un flujo ni en `n8n/credenciales/`.
+
+**Cómo se comportan** (diseño de la 201): cada nodo HTTP y de correo reintenta 3 veces cada 5 s (n8n no permite esperar más de 5 s entre intentos) y espera 10 s como máximo por llamada; si sigue fallando, la ejecución queda fallida en el panel con el motivo (*Executions*) y se puede reintentar desde ahí sin enviar dos veces el mismo correo (Finanzas guarda cada envío; el flujo no envía si ya está anotado). Los disparadores de RabbitMQ confirman el mensaje al terminar la ejecución y procesan de a uno, así un aviso repetido llega cuando el primero ya anotó su envío. «Recordar cobros» sigue con los demás cobros si uno falla (por ejemplo, un cliente sin correo) y termina la ejecución como fallida con la lista de los que no salieron. Para ejecutarlo sin esperar a las 08:00: panel → «Recordar cobros» → *Execute workflow* (nodo «Ejecutar ahora»).
+
+**Ver los correos:** `http://localhost:8025` (con el PDF adjunto de la nota de cobro). La API la usan las pruebas: `GET /api/v1/messages`, `GET /api/v1/message/{ID}` y `GET /api/v1/message/{ID}/part/{PartID}`.
+
+**Prueba de punta a punta:** `node pruebas/cobranza.mjs` (abajo, «Prueba de la cobranza automática»).
 
 ### Base de reportes (401) en la instalación local de PostgreSQL
 
@@ -237,6 +278,23 @@ node pruebas/reportes.mjs --solo-carga # solo la carga inicial
 ```
 
 **Eventos:** registra una obra «Prueba reportes 401 …» con zona `NORTE` por Obras, el residente elabora y presenta la planilla del mes y el cliente la aprueba (saga 008); comprueba en `reportes_db` que la obra aparece en `rpt_obra_resumen` en menos de 10 s con sus datos y avance 0, que pasa a `EN_EJECUCION`, la fila `APROBADA` de `rpt_planilla` (neto 15.770, monto del periodo 19.000, avance 19 %), el avance igual al de Obras y la fila `PENDIENTE` de `rpt_cobro` con número, cliente y zona. **Carga inicial:** corre `ia-carga-inicial` (o el comando de la variable `CARGA_INICIAL`, por ejemplo `cd ../services/ia && uv run python -m ia.carga_inicial`) con el cliente `ia-reportes` real, comprueba las 3 obras de los datos de prueba con tantas planillas, cobros y movimientos como tienen en ese momento Obras, Finanzas y Materiales (leídos de sus `GET`, no números fijos: una prueba manual puede haber aprobado otra planilla) y el mismo avance y zona que Obras, y que una segunda corrida deja las mismas filas y el mismo consumo. Lee `reportes_db` con `psql-cli` (solo `SELECT`). Deja la obra de prueba creada: úsala solo en desarrollo.
+
+## Prueba de la cobranza automática (201)
+
+Con el entorno levantado con `-Perfil automatizacion`, los datos de prueba recién cargados (`./semilla/recargar.ps1`), Obras, Materiales, Finanzas (`serve`, `mensajeria:consumir` **y** `mensajeria:publicar`) y el gateway corriendo:
+
+```powershell
+$env:N8N_PROPIETARIO_CLAVE = 'la contraseña de la cuenta de propietario de n8n'   # opcional, solo en la terminal
+node pruebas/cobranza.mjs
+```
+
+1. cliente1 aprueba la planilla N.º 3 de la obra 1 (como el portal) → en menos de 1 minuto llega a Mailpit la nota de cobro a `cliente1@correo.test`, con copia oculta a cobranzas y el PDF adjunto, y Finanzas tiene el envío `NOTA_COBRO`;
+2. el mismo `CobroEmitido` otra vez (solo a la cola `n8n.cobro-emitido`, no a Obras ni a IA) → ninguna nota nueva;
+3. «Recordar cobros» → «Cobro vencido: COB-AAAA-0001 · Edificio Residencial Las Palmeras» a cliente1, el resumen del día a cobranzas y el envío `RECORDATORIO_VENCIDO`; ejecutado otra vez → ningún correo nuevo. Con `N8N_PROPIETARIO_CLAVE` lo ejecuta el script entrando al panel como propietario; sin ella, te pide ejecutarlo a mano y espera 3 minutos;
+4. admin1 registra el pago del cobro nuevo (`registrarPagoCobro` del gateway, comprobante `PRUEBA-201`) → constancia de pago y envío `CONSTANCIA_PAGO`;
+5. el mismo `CobroPagado` otra vez → ninguna constancia nueva.
+
+Solo cuenta los correos que llegaron después de empezar. Deja la planilla aprobada y su cobro pagado: recarga los datos antes de repetirla.
 
 ## Prueba de punta a punta de la saga «aprobar planilla» (008)
 

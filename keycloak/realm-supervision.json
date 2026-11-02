@@ -58,6 +58,10 @@
       {
         "name": "agente_ia",
         "description": "Agentes de IA (service account de ia-agentes, 501): solo /mcp de cada servicio, nunca las rutas REST"
+      },
+      {
+        "name": "automatizacion",
+        "description": "Automatización de cobranza (service account de n8n, 201): solo las rutas de Finanzas que llama n8n"
       }
     ]
   },
@@ -240,6 +244,35 @@
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "${IA_AGENTES_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "n8n",
+      "name": "n8n: automatización de cobranza (201)",
+      "description": "Solo client credentials, con los roles automatizacion (rutas de Finanzas de la 201) y gerente (lectura) y view-users de realm-management (nombre y correo del cliente). El secreto sale de N8N_KEYCLOAK_SECRETO (infra/.env) al importar el realm.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${N8N_KEYCLOAK_SECRETO}",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -474,6 +507,21 @@
         "default-roles-supervision",
         "agente_ia"
       ]
+    },
+    {
+      "username": "service-account-n8n",
+      "enabled": true,
+      "serviceAccountClientId": "n8n",
+      "realmRoles": [
+        "default-roles-supervision",
+        "automatizacion",
+        "gerente"
+      ],
+      "clientRoles": {
+        "realm-management": [
+          "view-users"
+        ]
+      }
     }
   ]
 }

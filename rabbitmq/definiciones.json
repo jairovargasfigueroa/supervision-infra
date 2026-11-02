@@ -52,6 +52,20 @@
       "arguments": {}
     },
     {
+      "name": "n8n.cobro-emitido",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "n8n.cobro-pagado",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
       "name": "plataforma.fallidos",
       "vhost": "/",
       "durable": true,
@@ -231,6 +245,14 @@
     {
       "source": "plataforma",
       "vhost": "/",
+      "destination": "ia",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroPagado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
       "destination": "notificaciones",
       "destination_type": "queue",
       "routing_key": "evento.obras.ObraRegistrada",
@@ -282,6 +304,22 @@
       "destination": "notificaciones",
       "destination_type": "queue",
       "routing_key": "evento.finanzas.ContratoRechazado",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "n8n.cobro-emitido",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroEmitido",
+      "arguments": {}
+    },
+    {
+      "source": "plataforma",
+      "vhost": "/",
+      "destination": "n8n.cobro-pagado",
+      "destination_type": "queue",
+      "routing_key": "evento.finanzas.CobroPagado",
       "arguments": {}
     }
   ]

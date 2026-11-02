@@ -76,8 +76,20 @@ prueba('RabbitMQ: hay un usuario por servicio con permisos en el vhost "/"', asy
   }
 });
 
+prueba('RabbitMQ: el usuario n8n (201) solo puede leer sus dos colas', async () => {
+  if (!env.RABBITMQ_N8N_CLAVE) {
+    avisos.push('sin RABBITMQ_N8N_CLAVE en .env: no se comprobó el usuario n8n (perfil automatizacion, 201)');
+    return;
+  }
+  const permisos = await rabbit('/users/n8n/permissions');
+  afirmar(
+    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.cobro-(emitido|pagado)$`),
+    `permisos de n8n: ${JSON.stringify(permisos)}`,
+  );
+});
+
 // --- RabbitMQ: exchange, colas y enlaces (1.5) ---
-// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401 y 010).
+// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401, 010 y 201).
 const ENLACES = JSON.parse(readFileSync(fileURLToPath(new URL('./enlaces.json', import.meta.url)), 'utf8'));
 
 prueba('RabbitMQ: exchange plataforma (topic, durable) y colas durables', async () => {
@@ -193,9 +205,9 @@ prueba('Realm: español, tema supervision, política de contraseñas y fuerza br
   afirmar(realm.accessTokenLifespan === 300 && realm.ssoSessionMaxLifespan === 36000, 'duración de token o sesión');
 });
 
-prueba('Realm: existen los seis roles de las personas y agente_ia (501)', async () => {
+prueba('Realm: existen los seis roles de las personas, agente_ia (501) y automatizacion (201)', async () => {
   const roles = (await adminKeycloak('/roles')).map((r) => r.name);
-  for (const rol of [...ROLES, 'agente_ia']) afirmar(roles.includes(rol), `falta el rol ${rol}`);
+  for (const rol of [...ROLES, 'agente_ia', 'automatizacion']) afirmar(roles.includes(rol), `falta el rol ${rol}`);
 });
 
 prueba('Realm: clientes públicos erp, portal y app-obra con PKCE S256 y sin direct access grants', async () => {
@@ -330,6 +342,49 @@ prueba('Realm: el cliente ia-agentes (501) solo da client credentials y su token
     cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
       cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
     'flujos del cliente ia-agentes',
+  );
+});
+
+prueba('Realm: el cliente n8n (201) solo da client credentials y su token trae automatizacion, gerente, view-users y plataforma-api', async () => {
+  const pedir = (cuerpo) =>
+    fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(cuerpo),
+    });
+  afirmar(env.N8N_KEYCLOAK_SECRETO, 'falta N8N_KEYCLOAK_SECRETO en .env');
+  const respuesta = await pedir({ grant_type: 'client_credentials', client_id: 'n8n', client_secret: env.N8N_KEYCLOAK_SECRETO });
+  afirmar(respuesta.ok, `client_credentials de n8n: ${respuesta.status} (¿se recreó Keycloak después de agregar el cliente o cambiar el secreto?)`);
+  const tokens = await respuesta.json();
+  const datos = leerToken(tokens.access_token);
+  afirmar(datos.azp === 'n8n', `azp: ${datos.azp}`);
+  afirmar([datos.aud].flat().includes('plataforma-api'), `aud: ${datos.aud}`);
+  for (const rol of ['automatizacion', 'gerente']) afirmar(datos.realm_access?.roles.includes(rol), `sin ${rol}: ${datos.realm_access?.roles}`);
+  // Solo gerente entre los roles de las personas (lectura); nunca admin
+  for (const rol of ROLES.filter((r) => r !== 'gerente')) afirmar(!datos.realm_access?.roles.includes(rol), `trae el rol de persona ${rol}`);
+  afirmar(datos.resource_access?.['realm-management']?.roles.includes('view-users'), 'sin view-users');
+  afirmar(datos.iss === `${KEYCLOAK}/realms/supervision`, `iss: ${datos.iss}`);
+  afirmar(tokens.expires_in === 300, `expires_in: ${tokens.expires_in}`);
+  // Lee el nombre y el correo del cliente de una obra (flujos de cobranza)
+  const cliente1 = await fetch(`${KEYCLOAK}/admin/realms/supervision/users/a0000000-0000-4000-8000-000000000007`, {
+    headers: { authorization: `Bearer ${tokens.access_token}` },
+  });
+  afirmar(cliente1.ok, `leer cliente1 con el token de n8n: ${cliente1.status}`);
+  afirmar((await cliente1.json()).email === 'cliente1@correo.test', 'correo de cliente1');
+  afirmar((await pedir({ grant_type: 'client_credentials', client_id: 'n8n', client_secret: 'otro' })).status === 401, 'aceptó un secreto incorrecto');
+  const directo = await pedir({
+    grant_type: 'password',
+    client_id: 'n8n',
+    client_secret: env.N8N_KEYCLOAK_SECRETO,
+    username: 'gerente1',
+    password: 'Prueba123!',
+  });
+  afirmar(!directo.ok, `aceptó direct access grants: ${directo.status}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=n8n');
+  afirmar(
+    cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
+      cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
+    'flujos del cliente n8n',
   );
 });
 
