@@ -62,6 +62,9 @@ archivo_del_entorno() {
   (cd "$(dirname "$valor")" && printf '%s/%s' "$(pwd)" "$(basename "$valor")")
 }
 
+# Ruta para docker: en Git Bash, la de Windows (C:/…), que sirve aunque MSYS_NO_PATHCONV apague la conversión
+ruta_docker() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+
 # Ayudante de Node con el entorno elegido (y la CA local del ensayo, si el entorno la trae en CA_LOCAL)
 ayudante() { SEMILLA_ENTORNO="$RUTA_ENV" node "$AYUDANTE" "$@"; }
 
@@ -72,7 +75,7 @@ version_mayor() {
 # AWS CLI en el contenedor s3-cli (perfil herramientas); en modo demostración (601), el del grupo del S3 compatible
 ejecutar_s3() {
   local compose=(compose)
-  [ "$DEMO" = si ] && compose=(compose -f "$COMPOSE_S3" --env-file "$RUTA_ENV")
+  [ "$DEMO" = si ] && compose=(compose -f "$(ruta_docker "$COMPOSE_S3")" --env-file "$(ruta_docker "$RUTA_ENV")")
   (cd "$INFRA" && MSYS_NO_PATHCONV=1 docker "${compose[@]}" --profile herramientas run --rm --no-TTY s3-cli "$@" 2>&1) \
     | grep -Ev '^[[:space:]]*Container .*(Creat|Start|Stopp|Remov)'
   return "${PIPESTATUS[0]}"
@@ -219,7 +222,7 @@ ejecutar_en_imagen() {
       *) detener "ejecutar_en_imagen: argumento inesperado $1" ;;
     esac
   done
-  ejecutar "$nombre" "$INFRA" docker compose -f "$archivo" --env-file "$RUTA_ENV" run --rm --no-deps --no-TTY \
+  ejecutar "$nombre" "$INFRA" docker compose -f "$(ruta_docker "$archivo")" --env-file "$(ruta_docker "$RUTA_ENV")" run --rm --no-deps --no-TTY \
     -e SEMILLA_DEMO=si -e "SEMILLA_FECHA=$SEMILLA_FECHA" "${variables[@]}" "$servicio" "${comando[@]}"
 }
 

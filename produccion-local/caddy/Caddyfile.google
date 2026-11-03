@@ -1,0 +1,16 @@
+# 601 · Caddy del grupo «google» (hace de Google Cloud): HTTPS en el 9443 de la máquina con la CA local.
+# Publica el servicio de IA (ia-api, también /mcp) y Materiales. Direcciones: https://<pieza>.google.localhost:9443
+{
+	https_port 9443
+	import /etc/caddy/global.caddy
+}
+
+import /etc/caddy/comun.caddy
+
+ia.google.localhost {
+	import servicio ia-api:8085
+}
+
+materiales.google.localhost {
+	import servicio materiales:8082
+}

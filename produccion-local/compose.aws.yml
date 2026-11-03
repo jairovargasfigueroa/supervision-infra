@@ -1,0 +1,135 @@
+# 601 · «Producción local», grupo aws (hace de AWS; reparto de la 602). Variables: .env de esta carpeta.
+# Sincronización, DynamoDB Local y un S3 compatible (MinIO) para las fotos. Habla con los otros grupos solo por sus
+# direcciones públicas (HTTPS por Caddy). README de infra, «Producción local».
+name: supervision-aws
+
+x-nombres-publicos: &nombres-publicos
+  - "keycloak.azure.localhost:host-gateway"
+  - "rabbitmq.azure.localhost:host-gateway"
+  - "gateway.azure.localhost:host-gateway"
+  - "obras.azure.localhost:host-gateway"
+  - "finanzas.azure.localhost:host-gateway"
+  - "materiales.google.localhost:host-gateway"
+  - "ia.google.localhost:host-gateway"
+  - "sincronizacion.aws.localhost:host-gateway"
+  - "s3.aws.localhost:host-gateway"
+
+services:
+  # DynamoDB Local (en la 602, DynamoDB): Sincronización crea sus tablas al iniciar (DYNAMODB_CREAR_TABLAS)
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    working_dir: /home/dynamodblocal
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    user: root
+    volumes:
+      - datos-dynamodb:/home/dynamodblocal/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # S3 compatible (en la 602, S3). pgsty/minio: fork comunitario de MinIO (el oficial ya no publica imágenes en
+  # Docker Hub). Usuario y contraseña = AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY del .env. La imagen no trae curl
+  # ni wget: minio-init espera a que responda.
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?falta AWS_ACCESS_KEY_ID en .env}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?falta AWS_SECRET_ACCESS_KEY en .env}
+      # Las fotos se piden con URL firmadas desde el ERP y el portal (como la regla CORS del bucket en S3)
+      MINIO_API_CORS_ALLOW_ORIGIN: ${ERP_URL},${PORTAL_URL}
+      MINIO_BROWSER: "off"
+    volumes:
+      - datos-minio:/data
+    restart: unless-stopped
+
+  # Crea el bucket si no existe (idempotente) y termina
+  minio-init:
+    image: amazon/aws-cli:2.38.0
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:?falta S3_BUCKET en .env}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        for i in $$(seq 1 30); do aws s3api list-buckets >/dev/null 2>&1 && break; sleep 2; done;
+        aws s3api head-bucket --bucket "$$S3_BUCKET" 2>/dev/null && echo "bucket $$S3_BUCKET ya existe" ||
+        { aws s3api create-bucket --bucket "$$S3_BUCKET" && echo "bucket $$S3_BUCKET creado"; }
+    restart: "no"
+
+  # AWS CLI contra el S3 compatible del grupo: lo usa la semilla en modo demostración para las fotos
+  # (semilla -Entorno produccion-local/.env; SEMILLA_COMPOSE_S3). Perfil herramientas: no corre con "up".
+  s3-cli:
+    image: amazon/aws-cli:2.38.0
+    profiles: ["herramientas"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET}
+    volumes:
+      - ../semilla/fotos:/semilla/fotos:ro
+    command: ["--version"]
+    restart: "no"
+
+  sincronizacion:
+    build: ${SINCRONIZACION_DIR:-../../services/sincronizacion}
+    image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-ms-sincronizacion:${IMAGEN_ETIQUETA:-local}
+    extra_hosts: *nombres-publicos
+    environment:
+      NODE_ENV: production
+      PORT: "8084"
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      AUDIENCIA: plataforma-api
+      OBRAS_URL: ${OBRAS_URL}
+      MATERIALES_URL: ${MATERIALES_URL}
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      AWS_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      # DynamoDB Local acepta cualquier clave (en la 602, el rol de la función)
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      # Con DynamoDB Local las tablas las crea el servicio (en la 602 las crea la infraestructura)
+      DYNAMODB_CREAR_TABLAS: "true"
+      TIEMPO_MAXIMO_LLAMADA_MS: "5000"
+      TIEMPO_MAXIMO_LOTE_MS: "20000"
+      NODE_EXTRA_CA_CERTS: /certificados/ca.crt
+    volumes:
+      - ./certificados:/certificados:ro
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  # HTTPS del grupo (10443) con la CA local
+  caddy:
+    image: caddy:2.11.7-alpine
+    ports:
+      - "10443:10443"
+    environment:
+      ERP_URL: ${ERP_URL}
+    volumes:
+      - ./caddy/Caddyfile.aws:/etc/caddy/Caddyfile:ro
+      - ./caddy/global.caddy:/etc/caddy/global.caddy:ro
+      - ./caddy/comun.caddy:/etc/caddy/comun.caddy:ro
+      - ./certificados:/certificados:ro
+      - datos-caddy:/data
+    restart: unless-stopped
+
+volumes:
+  datos-dynamodb:
+  datos-minio:
+  datos-caddy:

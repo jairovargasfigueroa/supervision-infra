@@ -7,3 +7,7 @@ secretos/
 Thumbs.db
 .vscode/
 .idea/
+
+# 601 · Producción local: CA y certificados generados y frontends publicados (nunca se suben)
+produccion-local/certificados/
+produccion-local/sitios/
