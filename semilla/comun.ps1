@@ -31,15 +31,49 @@ function Linea($Objeto) {
     return "$Objeto"
 }
 
-# infra/.env como tabla (no se ejecuta: solo líneas NOMBRE=valor)
-function Leer-Env {
-    $ruta = Join-Path $Infra '.env'
-    if (-not (Test-Path $ruta)) { Detener 'Falta infra/.env: copia .env.example a .env y completa los valores.' }
+# 601 · Modo demostración (semilla -Entorno archivo con SEMILLA_DEMO=si): cada servicio carga con su imagen
+$script:Demo = $false
+$script:RutaEnv = Join-Path $Infra '.env'
+$script:Compose = @{}
+
+# infra/.env (o el archivo de -Entorno) como tabla (no se ejecuta: solo líneas NOMBRE=valor)
+function Leer-Env([string]$Ruta = (Join-Path $Infra '.env')) {
+    $ruta = $Ruta
+    if (-not (Test-Path $ruta)) { Detener "Falta $ruta`: copia su .env.example a .env y completa los valores." }
     $valores = @{}
     foreach ($linea in (Get-Content -Encoding UTF8 $ruta)) {
         if ($linea -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$') { $valores[$Matches[1]] = $Matches[2].Trim() }
     }
     return $valores
+}
+
+# Ruta de un archivo de -Entorno: tal cual, relativa a la carpeta actual o relativa a infra/
+function Resolver-Entorno([string]$Ruta) {
+    foreach ($candidato in @($Ruta, (Join-Path $Infra $Ruta))) {
+        if (Test-Path -LiteralPath $candidato -PathType Leaf) { return (Resolve-Path -LiteralPath $candidato).Path }
+    }
+    Detener "No encuentro el archivo de entorno $Ruta (ni en la carpeta actual ni en infra/)."
+}
+
+# Archivo de una variable del entorno de demostración, relativo a la carpeta de ese archivo; se detiene si no existe
+function Archivo-Del-Entorno($Env, [string]$Variable) {
+    $valor = $Env[$Variable]
+    if (-not $valor) { Detener "Falta $Variable en $RutaEnv (modo demostración)." }
+    if (-not [System.IO.Path]::IsPathRooted($valor)) { $valor = Join-Path (Split-Path -Parent $RutaEnv) $valor }
+    if (-not (Test-Path -LiteralPath $valor -PathType Leaf)) { Detener "$Variable apunta a $valor, que no existe." }
+    return (Resolve-Path -LiteralPath $valor).Path
+}
+
+# Ayudante de Node con el entorno elegido (y la CA local del ensayo, si el entorno la trae en CA_LOCAL)
+function Ejecutar-Ayudante([string[]]$Argumentos) {
+    $anterior = $env:SEMILLA_ENTORNO
+    $env:SEMILLA_ENTORNO = $RutaEnv
+    try { & node $Ayudante @Argumentos 2>&1 } finally { $env:SEMILLA_ENTORNO = $anterior }
+}
+
+# docker compose del grupo donde corre una pieza (modo demostración), con las variables del archivo de entorno
+function Argumentos-Compose([string]$Archivo) {
+    return @('compose', '-f', $Archivo, '--env-file', $RutaEnv)
 }
 
 # Carpeta de un proyecto: la variable de .env (relativa a infra/) o la carpeta hermana por defecto
@@ -59,23 +93,30 @@ function Version-Mayor([string]$Texto) {
 }
 
 # Guardas, herramientas y piezas que deben responder. Devuelve la configuración que usan los pasos.
-function Comprobar-Entorno([switch]$ConRabbitMQ) {
+function Comprobar-Entorno([switch]$ConRabbitMQ, [string]$Entorno) {
     Paso 'Guardas'
-    $envInfra = Leer-Env
-    if ($envInfra['SEMILLA_PERMITIDA'] -ne 'si') {
-        Detener 'La carga de datos de prueba no está permitida aquí: falta SEMILLA_PERMITIDA=si en infra/.env (solo en desarrollo).'
+    if ($Entorno) { $script:RutaEnv = Resolver-Entorno $Entorno }
+    $envInfra = Leer-Env $RutaEnv
+    if ($Entorno) { Write-Host "ok       entorno $RutaEnv" }
+    # 601: SEMILLA_DEMO=si permite cargar (nunca vaciar) los datos de demostración fuera de desarrollo
+    $script:Demo = $envInfra['SEMILLA_DEMO'] -eq 'si'
+    if ($Demo) {
+        Write-Host 'ok       SEMILLA_DEMO=si (datos de demostración: solo carga, nunca vaciado)'
+    } elseif ($envInfra['SEMILLA_PERMITIDA'] -ne 'si') {
+        Detener "La carga de datos de prueba no está permitida aquí: falta SEMILLA_PERMITIDA=si en $RutaEnv (solo en desarrollo; para una demostración, SEMILLA_DEMO=si)."
+    } else {
+        Write-Host 'ok       SEMILLA_PERMITIDA=si'
     }
-    Write-Host 'ok       SEMILLA_PERMITIDA=si'
 
     $bucket = $envInfra['S3_BUCKET']
-    if ($bucket -and -not $bucket.StartsWith('supervision-dev-')) {
-        Detener "El bucket '$bucket' no es de desarrollo: S3_BUCKET debe empezar con supervision-dev-. No se toca."
+    if ($bucket -and -not $Demo -and -not $bucket.StartsWith('supervision-dev-')) {
+        Detener "El bucket '$bucket' no es de desarrollo: S3_BUCKET debe empezar con supervision-dev- (o SEMILLA_DEMO=si). No se toca."
     }
     $fotos = [bool]($bucket -and $envInfra['AWS_ACCESS_KEY_ID'] -and $envInfra['AWS_SECRET_ACCESS_KEY'])
     if ($fotos) {
         Write-Host "ok       bucket s3://$bucket"
     } else {
-        Aviso ('Se saltan las fotos: faltan S3_BUCKET, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY en infra/.env. ' +
+        Aviso ("Se saltan las fotos: faltan S3_BUCKET, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY en $RutaEnv. " +
             'Las filas de las fotos se cargan igual en Obras, pero las imágenes no se verán hasta subirlas ' +
             '(completa .env y vuelve a correr semilla: no duplica nada).')
     }
@@ -84,34 +125,48 @@ function Comprobar-Entorno([switch]$ConRabbitMQ) {
     $nodo = (& node -v) 2>$null
     if ((Version-Mayor $nodo) -lt 2400) { Detener "Hace falta Node 24 (hay '$nodo'): nvm use 24." }
     Write-Host "ok       Node $nodo"
-    $php = (& php -r 'echo PHP_VERSION;') 2>$null
-    if ((Version-Mayor $php) -lt 803) { Detener "Hace falta PHP 8.3 o más para Finanzas (hay '$php'): usa el PHP de Herd, no el de XAMPP." }
-    Write-Host "ok       PHP $php"
-    if ($fotos) {
+    if ($Demo) {
+        # 601: cada servicio carga con su imagen de producción, en el grupo (compose) donde corre
         & docker info --format '{{.ServerVersion}}' *> $null
-        if ($LASTEXITCODE -ne 0) { Detener 'Docker no responde: abre Docker Desktop (lo usa s3-cli para las fotos).' }
+        if ($LASTEXITCODE -ne 0) { Detener 'Docker no responde: abre Docker Desktop (en modo demostración cada servicio carga con su imagen).' }
+        $script:Compose = @{
+            Obras      = Archivo-Del-Entorno $envInfra 'SEMILLA_COMPOSE_OBRAS'
+            Finanzas   = Archivo-Del-Entorno $envInfra 'SEMILLA_COMPOSE_FINANZAS'
+            Materiales = Archivo-Del-Entorno $envInfra 'SEMILLA_COMPOSE_MATERIALES'
+        }
+        if ($fotos) { $Compose['S3'] = Archivo-Del-Entorno $envInfra 'SEMILLA_COMPOSE_S3' }
+        foreach ($pieza in $Compose.Keys) { Write-Host "ok       $pieza con su imagen ($($Compose[$pieza]))" }
+        $config = @{ Env = $envInfra; Bucket = $bucket; Fotos = $fotos }
+    } else {
+        $php = (& php -r 'echo PHP_VERSION;') 2>$null
+        if ((Version-Mayor $php) -lt 803) { Detener "Hace falta PHP 8.3 o más para Finanzas (hay '$php'): usa el PHP de Herd, no el de XAMPP." }
+        Write-Host "ok       PHP $php"
+        if ($fotos) {
+            & docker info --format '{{.ServerVersion}}' *> $null
+            if ($LASTEXITCODE -ne 0) { Detener 'Docker no responde: abre Docker Desktop (lo usa s3-cli para las fotos).' }
+        }
+        $config = @{
+            Env        = $envInfra
+            Bucket     = $bucket
+            Fotos      = $fotos
+            Obras      = Carpeta-Proyecto $envInfra 'OBRAS_DIR' '../services/obras' 'mvnw.cmd'
+            Finanzas   = Carpeta-Proyecto $envInfra 'FINANZAS_DIR' '../services/finanzas' 'artisan'
+            Materiales = Carpeta-Proyecto $envInfra 'MATERIALES_DIR' '../services/materiales' 'package.json'
+        }
+        Write-Host "ok       Obras $($config.Obras)"
+        Write-Host "ok       Finanzas $($config.Finanzas)"
+        Write-Host "ok       Materiales $($config.Materiales)"
     }
-    $config = @{
-        Env        = $envInfra
-        Bucket     = $bucket
-        Fotos      = $fotos
-        Obras      = Carpeta-Proyecto $envInfra 'OBRAS_DIR' '../services/obras' 'mvnw.cmd'
-        Finanzas   = Carpeta-Proyecto $envInfra 'FINANZAS_DIR' '../services/finanzas' 'artisan'
-        Materiales = Carpeta-Proyecto $envInfra 'MATERIALES_DIR' '../services/materiales' 'package.json'
-    }
-    Write-Host "ok       Obras $($config.Obras)"
-    Write-Host "ok       Finanzas $($config.Finanzas)"
-    Write-Host "ok       Materiales $($config.Materiales)"
 
     Paso 'Piezas que deben responder'
     $argumentos = @('comprobar')
     if ($ConRabbitMQ) { $argumentos += '--rabbitmq' }
-    & node $Ayudante @argumentos 2>&1 | ForEach-Object { Write-Host (Linea $_) }
+    Ejecutar-Ayudante $argumentos | ForEach-Object { Write-Host (Linea $_) }
     if ($LASTEXITCODE -ne 0) { exit 1 }
     if ($fotos) {
         $salida = Ejecutar-S3 @('s3api', 'head-bucket', '--bucket', $bucket)
         if ($LASTEXITCODE -ne 0) {
-            Detener "El bucket s3://$bucket no responde con las claves de infra/.env:`n$($salida -join "`n")"
+            Detener "El bucket s3://$bucket no responde con las claves de $RutaEnv`:`n$($salida -join "`n")"
         }
         Write-Host "ok       bucket s3://$bucket"
     }
@@ -147,7 +202,10 @@ function Ejecutar-S3([string[]]$Argumentos) {
     $anterior = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $salida = & docker compose --profile herramientas run --rm --no-TTY s3-cli @Argumentos 2>&1 |
+        # 601: en modo demostración, el s3-cli del grupo del S3 compatible (con su AWS_ENDPOINT_URL)
+        $compose = @('compose')
+        if ($Demo) { $compose = Argumentos-Compose $Compose['S3'] }
+        $salida = & docker @compose --profile herramientas run --rm --no-TTY s3-cli @Argumentos 2>&1 |
             ForEach-Object { Linea $_ } | Where-Object { $_ -notmatch '^\s*Container .*(Creat|Start|Stopp|Remov)' }
     } finally {
         $ErrorActionPreference = $anterior
@@ -210,15 +268,25 @@ function Contar-Fotos([string]$Bucket) {
 }
 
 function Verificar-Usuarios {
-    & node $Ayudante usuarios 2>&1 | ForEach-Object { Write-Host (Linea $_) }
+    Ejecutar-Ayudante @('usuarios') | ForEach-Object { Write-Host (Linea $_) }
     return $LASTEXITCODE
+}
+
+# 601: carga de un servicio con su imagen de producción (modo demostración), en el grupo donde corre:
+# docker compose run --rm --no-deps con SEMILLA_DEMO=si y la fecha D, más las variables propias del servicio
+function Ejecutar-En-Imagen([string]$Nombre, [string]$Archivo, [string]$Servicio, [string[]]$Variables, [string[]]$Comando) {
+    $argumentos = (Argumentos-Compose $Archivo) + @('run', '--rm', '--no-deps', '--no-TTY', '-e', 'SEMILLA_DEMO=si', '-e', "SEMILLA_FECHA=$env:SEMILLA_FECHA")
+    foreach ($variable in $Variables) { $argumentos += @('-e', $variable) }
+    $argumentos += $Servicio
+    if ($Comando) { $argumentos += $Comando }
+    return Ejecutar $Nombre $Infra 'docker' $argumentos
 }
 
 # Pasos 2 a 6 de la sección 12: D, Keycloak, Obras → Finanzas → Materiales, fotos y resumen.
 # ModoObras = recargar hace que Obras vacíe sus tablas antes de cargar (lo usa recargar.ps1).
 function Cargar-Datos($Config, [string]$ModoObras = 'cargar') {
     Paso 'Fecha de carga'
-    $fecha = & node $Ayudante fecha 2>&1 | ForEach-Object { Linea $_ }
+    $fecha = Ejecutar-Ayudante @('fecha') | ForEach-Object { Linea $_ }
     if ($LASTEXITCODE -ne 0) { Detener "$fecha" }
     $env:SEMILLA_FECHA = $fecha
     Write-Host "D = $fecha (SEMILLA_FECHA, la misma para los tres servicios)"
@@ -231,29 +299,45 @@ function Cargar-Datos($Config, [string]$ModoObras = 'cargar') {
     }
     if ($codigo -ne 0) { exit 1 }
 
-    Paso "Obras (perfil semilla, modo $ModoObras)"
-    $argumentos = @('spring-boot:run', '-Dspring-boot.run.profiles=semilla')
-    if ($ModoObras -eq 'recargar') { $argumentos += '-Dspring-boot.run.arguments=--semilla.modo=recargar' }
-    $salida = Ejecutar 'Obras' $Config.Obras (Join-Path $Config.Obras 'mvnw.cmd') $argumentos
-    $Resumen['Obras'] = Lineas-Resumen $salida
+    if ($Demo) {
+        # 601: modo demostración; solo carga, nunca recargar
+        if ($ModoObras -ne 'cargar') { Detener 'Con SEMILLA_DEMO=si solo se carga: el vaciado está prohibido fuera de desarrollo.' }
+        Paso 'Obras (imagen de producción, perfiles prod y semilla)'
+        $salida = Ejecutar-En-Imagen 'Obras' $Compose['Obras'] 'obras' @('SPRING_PROFILES_ACTIVE=prod,semilla') @()
+        $Resumen['Obras'] = Lineas-Resumen $salida
 
-    Paso 'Finanzas (DatosPruebaSeeder)'
-    $salida = Ejecutar 'Finanzas' $Config.Finanzas 'php' @('artisan', 'db:seed', '--class=DatosPruebaSeeder', '--force')
-    $Resumen['Finanzas'] = Lineas-Resumen $salida
+        Paso 'Finanzas (imagen de producción, DatosPruebaSeeder)'
+        $salida = Ejecutar-En-Imagen 'Finanzas' $Compose['Finanzas'] 'finanzas-api' @() @('php', 'artisan', 'db:seed', '--class=DatosPruebaSeeder', '--force')
+        $Resumen['Finanzas'] = Lineas-Resumen $salida
 
-    Paso 'Materiales (npm run semilla)'
-    $salida = Ejecutar 'Materiales' $Config.Materiales 'npm.cmd' @('run', 'semilla')
-    $Resumen['Materiales'] = Lineas-Resumen $salida
+        Paso 'Materiales (imagen de producción, semilla cargar)'
+        $salida = Ejecutar-En-Imagen 'Materiales' $Compose['Materiales'] 'materiales' @() @('node', 'dist/semilla/main.js', 'cargar')
+        $Resumen['Materiales'] = Lineas-Resumen $salida
+    } else {
+        Paso "Obras (perfil semilla, modo $ModoObras)"
+        $argumentos = @('spring-boot:run', '-Dspring-boot.run.profiles=semilla')
+        if ($ModoObras -eq 'recargar') { $argumentos += '-Dspring-boot.run.arguments=--semilla.modo=recargar' }
+        $salida = Ejecutar 'Obras' $Config.Obras (Join-Path $Config.Obras 'mvnw.cmd') $argumentos
+        $Resumen['Obras'] = Lineas-Resumen $salida
 
-    Paso 'Fotos al bucket S3 de desarrollo'
+        Paso 'Finanzas (DatosPruebaSeeder)'
+        $salida = Ejecutar 'Finanzas' $Config.Finanzas 'php' @('artisan', 'db:seed', '--class=DatosPruebaSeeder', '--force')
+        $Resumen['Finanzas'] = Lineas-Resumen $salida
+
+        Paso 'Materiales (npm run semilla)'
+        $salida = Ejecutar 'Materiales' $Config.Materiales 'npm.cmd' @('run', 'semilla')
+        $Resumen['Materiales'] = Lineas-Resumen $salida
+    }
+
+    Paso 'Fotos al bucket S3'
     if ($Config.Fotos) {
         $salida = Ejecutar-S3 @('s3', 'sync', '/semilla/fotos', "s3://$($Config.Bucket)/fotos/", '--exclude', '*', '--include', '*.jpg', '--no-progress')
         $salida | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) { Detener 'No se pudieron subir las fotos (salida de arriba).' }
         $Resumen['Fotos'] = @("$(Contar-Fotos $Config.Bucket) de 10 imágenes en s3://$($Config.Bucket)/fotos/")
     } else {
-        Aviso 'Fotos saltadas (sin bucket o sin claves en infra/.env).'
-        $Resumen['Fotos'] = @('saltadas: falta S3_BUCKET o las claves en infra/.env')
+        Aviso "Fotos saltadas (sin bucket o sin claves en $RutaEnv)."
+        $Resumen['Fotos'] = @("saltadas: falta S3_BUCKET o las claves en $RutaEnv")
     }
 
     Paso "Resumen (fecha de carga D = $fecha)"
@@ -262,5 +346,9 @@ function Cargar-Datos($Config, [string]$ModoObras = 'cargar') {
         foreach ($linea in $Resumen[$pieza]) { Write-Host ('{0,-11} {1}' -f "${pieza}:", $linea) }
     }
     Write-Host ''
-    Write-Host 'Los indicadores son exactos el día D; antes de una demostración, ./semilla/recargar.ps1.'
+    if ($Demo) {
+        Write-Host 'Los indicadores son exactos el día D. En modo demostración nada se vacía: para empezar de cero se borran los volúmenes del entorno.'
+    } else {
+        Write-Host 'Los indicadores son exactos el día D; antes de una demostración, ./semilla/recargar.ps1.'
+    }
 }

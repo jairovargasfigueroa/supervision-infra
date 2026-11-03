@@ -8,6 +8,8 @@ param([switch]$Si)
 . (Join-Path $PSScriptRoot 'comun.ps1')
 
 $config = Comprobar-Entorno -ConRabbitMQ
+# 601: el vaciado está prohibido fuera de desarrollo, sin excepción (SEMILLA_DEMO=si solo permite cargar)
+if ($Demo) { Detener 'recargar no corre con SEMILLA_DEMO=si: en un entorno de demostración o de producción nada se vacía (solo semilla carga).' }
 & node $Ayudante servicios 2>&1 | ForEach-Object { Write-Host (Linea $_) -ForegroundColor Yellow }
 
 if (-not $Si) {

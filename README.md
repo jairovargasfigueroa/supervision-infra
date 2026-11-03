@@ -248,6 +248,14 @@ En Linux y macOS: `./semilla/semilla.sh` (o `SEMILLA_FECHA=2026-10-28 ./semilla/
 
 Hace, en orden: guardas (`SEMILLA_PERMITIDA=si`, bucket `supervision-dev-…`), comprueba Node, PHP, las carpetas de los proyectos y que PostgreSQL, MongoDB, Keycloak y el bucket responden; calcula **una sola fecha D** y la pasa a todos en `SEMILLA_FECHA`; comprueba que los 9 usuarios de Keycloak tienen su `id` fijo; carga **Obras → Finanzas → Materiales** (cada uno con su propio comando, ver `docs/contratos.md`), sube las fotos de `semilla/fotos/` al bucket (`fotos/{obraId}/{fotoId}.jpg`) y muestra un **resumen** con D y los conteos de cada servicio. Si algo falla, se detiene con un mensaje y no sigue con los demás. La carga **no publica eventos** y es **idempotente**: correrla de nuevo no duplica nada y no pisa lo que cambiaste (por ejemplo, una planilla aprobada sigue aprobada).
 
+### Datos de demostración fuera de desarrollo (601)
+
+```powershell
+./semilla/semilla.ps1 -Entorno produccion-local/.env      # en Bash: ./semilla/semilla.sh --entorno produccion-local/.env
+```
+
+Lee ese archivo en lugar de `infra/.env`. Con `SEMILLA_DEMO=si` en él (el `.env.example` de `produccion-local` lo trae) carga los mismos datos aunque los servicios estén en modo producción y las bases no sean locales, sin duplicar ni pisar nada, y **nunca vacía** (`recargar` se niega con `SEMILLA_DEMO=si`). Cada servicio carga con **su imagen de producción** en el grupo donde corre (`SEMILLA_COMPOSE_OBRAS`, `SEMILLA_COMPOSE_FINANZAS` y `SEMILLA_COMPOSE_MATERIALES`), así que no hacen falta PHP ni las carpetas de los proyectos, y las fotos van al S3 configurado con el `s3-cli` de su grupo (`SEMILLA_COMPOSE_S3`; en la producción local, MinIO). Comprueba los usuarios de Keycloak en `KEYCLOAK_URL` de ese archivo. Lo usa `produccion-local/levantar` al terminar.
+
 ### Recargar (antes de cada demostración)
 
 ```powershell

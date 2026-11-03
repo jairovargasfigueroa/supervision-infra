@@ -16,6 +16,8 @@ for argumento in "$@"; do
 done
 
 comprobar_entorno --rabbitmq
+# 601: el vaciado está prohibido fuera de desarrollo, sin excepción (SEMILLA_DEMO=si solo permite cargar)
+[ "$DEMO" = si ] && detener 'recargar no corre con SEMILLA_DEMO=si: en un entorno de demostración o de producción nada se vacía (solo semilla carga).'
 node "$AYUDANTE" servicios
 
 if [ "$SI" != si ]; then
