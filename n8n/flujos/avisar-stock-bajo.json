@@ -1,0 +1,318 @@
+{
+  "id": "avi010StockBajo0",
+  "name": "Avisar stock bajo",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "queue": "n8n.stock-bajo",
+        "options": {
+          "acknowledge": "executionFinishes",
+          "assertQueue": false,
+          "jsonParseBody": true,
+          "onlyContent": true,
+          "parallelMessages": 1
+        }
+      },
+      "id": "7389b79f-feef-5c0a-addf-359505dc166f",
+      "name": "Stock bajo",
+      "type": "n8n-nodes-base.rabbitmqTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "credentials": {
+        "rabbitmq": {
+          "id": "cred201RabbitMQ1",
+          "name": "RabbitMQ · usuario n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ¿Este aviso (id del sobre) ya se envió? Los datos estáticos solo se guardan en ejecuciones del flujo publicado\nconst avisos = $getWorkflowStaticData('global').avisos ?? [];\nreturn { json: { ...$json, repetido: avisos.includes($json.id) } };\n"
+      },
+      "id": "aa4a4a5b-474b-5cc7-8636-19dc18c298cc",
+      "name": "Revisar repetido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f5ca4d73-1477-5835-808e-4fa4fc72d536",
+              "leftValue": "={{ $json.repetido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5780f655-0814-5f49-853b-33b0f97e7859",
+      "name": "¿Ya avisado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "08b0cc69-289f-5e77-978c-f75ed3f47b34",
+      "name": "Ya avisado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OBRAS_URL }}/obras/{{ $('Stock bajo').first().json.datos.obraId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c0b4075b-d3c6-54e0-a69b-bceb56df77dc",
+      "name": "Leer obra",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.MATERIALES_URL }}/materiales?tamano=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pagina",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.items.some((m) => m.id === $('Stock bajo').first().json.datos.materialId) || $response.body.pagina * $response.body.tamano >= $response.body.total }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "id": "c3d7c8e6-2912-5829-87ed-4c1fff917845",
+      "name": "Leer materiales",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const numero = (n) => {\n  const [entero, decimales] = String(Math.round(Number(n) * 100) / 100).split('.');\n  return entero.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.') + (decimales ? ',' + decimales : '');\n};\n\nconst { obraId, materialId, cantidad, minimo } = $('Stock bajo').first().json.datos;\nconst obra = $('Leer obra').first().json;\nconst material = $input.all().flatMap((pagina) => pagina.json.items ?? []).find((m) => m.id === materialId);\nif (!material) throw new Error(`El material ${materialId} no está en el catálogo de Materiales`);\nreturn [{\n  json: {\n    tema: `obra-${obraId}-almacenero`,\n    titulo: `Stock bajo: ${material.nombre}`,\n    cuerpo: `${obra.nombre}: quedan ${numero(cantidad)} ${material.unidadPlural} (mínimo ${numero(minimo)})`,\n    datos: { tipo: 'STOCK_BAJO', obraId: String(obraId) },\n  },\n}];\n"
+      },
+      "id": "485d5453-37f9-53db-bc5f-c1e8c474b69e",
+      "name": "Armar aviso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fcm.googleapis.com/v1/projects/{{ $env.FIREBASE_PROYECTO_ID }}/messages:send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: { topic: $json.tema, notification: { title: $json.titulo, body: $json.cuerpo }, data: $json.datos, android: { priority: 'high' } } }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "2c552e55-1bfe-5488-99f6-925178a9a421",
+      "name": "Enviar push",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        400
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "cred010Firebase1",
+          "name": "Firebase · cuenta de servicio"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Anota el id del sobre como enviado (los últimos 500) para descartar el mismo aviso si vuelve a llegar\nconst datos = $getWorkflowStaticData('global');\nconst id = $('Stock bajo').first().json.id;\ndatos.avisos = [...(datos.avisos ?? []).filter((visto) => visto !== id), id].slice(-500);\nreturn [{ json: { id, anotado: true, avisosGuardados: datos.avisos.length } }];\n"
+      },
+      "id": "6d973b45-79bf-5725-9399-215e29098504",
+      "name": "Anotar aviso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Stock bajo": {
+      "main": [
+        [
+          {
+            "node": "Revisar repetido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revisar repetido": {
+      "main": [
+        [
+          {
+            "node": "¿Ya avisado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Ya avisado?": {
+      "main": [
+        [
+          {
+            "node": "Ya avisado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer obra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer obra": {
+      "main": [
+        [
+          {
+            "node": "Leer materiales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer materiales": {
+      "main": [
+        [
+          {
+            "node": "Armar aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar aviso": {
+      "main": [
+        [
+          {
+            "node": "Enviar push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar push": {
+      "main": [
+        [
+          {
+            "node": "Anotar aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/La_Paz",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": []
+}

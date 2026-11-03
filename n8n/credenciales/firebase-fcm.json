@@ -1,0 +1,14 @@
+{
+  "id": "cred010Firebase1",
+  "name": "Firebase · cuenta de servicio",
+  "type": "googleApi",
+  "data": {
+    "region": "global",
+    "email": "",
+    "privateKey": "",
+    "inpersonate": false,
+    "delegatedEmail": "",
+    "httpNode": true,
+    "scopes": "https://www.googleapis.com/auth/firebase.messaging"
+  }
+}

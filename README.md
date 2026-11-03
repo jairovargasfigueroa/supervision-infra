@@ -111,13 +111,58 @@ Opcionales (valores por defecto en `docker-compose.yml`): `N8N_PROPIETARIO_NOMBR
 
 **Qué hace n8n al arrancar** (`n8n/iniciar.sh`, en cada arranque): comprueba las variables, pasa los secretos de `.env` a `CREDENTIALS_OVERWRITE_DATA` (las credenciales de `n8n/credenciales/` no tienen secretos), arranca el reenvío de `localhost:8080` a Keycloak (`n8n/reenviar-keycloak.mjs`: así el token sale con el emisor `http://localhost:8080/realms/supervision` que validan los servicios), importa las credenciales y los flujos de `n8n/flujos/` con su `id` fijo (`n8n import:credentials` / `import:workflow --separate`), publica cada flujo (`n8n publish:workflow --id=…`; quedan activos sin reiniciar) y arranca n8n. La cuenta de propietario la crea n8n con `N8N_INSTANCE_OWNER_MANAGED_BY_ENV` y las variables `N8N_INSTANCE_OWNER_*` (están en el código de n8n 2.43.7, no en su documentación; comprobado el 02/11/2026): no hay paso manual. Si alguna vez no funcionara, n8n pide crear la cuenta al abrir el panel la primera vez.
 
-**El repositorio manda:** al reiniciar, los flujos se vuelven a importar desde `n8n/flujos/`. Para cambiar un texto o un horario, cámbialo en el editor de n8n, pruébalo y expórtalo al repo (menú del flujo → *Download*, guardado sobre el JSON de `n8n/flujos/` con el mismo `id`); si no, se pierde al reiniciar. Nunca guardes un secreto en un flujo ni en `n8n/credenciales/`.
+**El repositorio manda:** al reiniciar, los flujos se vuelven a importar desde `n8n/flujos/`. Para cambiar un texto o un horario, cámbialo en el editor de n8n, pruébalo y expórtalo al repo (menú del flujo → *Download*, guardado sobre el JSON de `n8n/flujos/` con el mismo `id`); si no, se pierde al reiniciar. Nunca guardes un secreto en un flujo ni en `n8n/credenciales/`. Ojo al reiniciar después de cambiar un flujo: en n8n 2.43.7, los mensajes que se procesan en los primeros segundos después del arranque pueden correr todavía con la versión publicada anterior (comprobado el 03/11/2026: la primera ejecución tras reiniciar usó la versión anterior y la siguiente, unos 30 s después, la nueva). Para probar un cambio, espera medio minuto después de que n8n esté listo.
 
 **Cómo se comportan** (diseño de la 201): cada nodo HTTP y de correo reintenta 3 veces cada 5 s (n8n no permite esperar más de 5 s entre intentos) y espera 10 s como máximo por llamada; si sigue fallando, la ejecución queda fallida en el panel con el motivo (*Executions*) y se puede reintentar desde ahí sin enviar dos veces el mismo correo (Finanzas guarda cada envío; el flujo no envía si ya está anotado). Los disparadores de RabbitMQ confirman el mensaje al terminar la ejecución y procesan de a uno, así un aviso repetido llega cuando el primero ya anotó su envío. «Recordar cobros» sigue con los demás cobros si uno falla (por ejemplo, un cliente sin correo) y termina la ejecución como fallida con la lista de los que no salieron. Para ejecutarlo sin esperar a las 08:00: panel → «Recordar cobros» → *Execute workflow* (nodo «Ejecutar ahora»).
 
 **Ver los correos:** `http://localhost:8025` (con el PDF adjunto de la nota de cobro). La API la usan las pruebas: `GET /api/v1/messages`, `GET /api/v1/message/{ID}` y `GET /api/v1/message/{ID}/part/{PartID}`.
 
 **Prueba de punta a punta:** `node pruebas/cobranza.mjs` (abajo, «Prueba de la cobranza automática»).
+
+### Avisos al celular y al cliente (010, perfil `automatizacion`)
+
+Tres flujos más de n8n, junto a los de la cobranza:
+
+| Flujo | Cuándo | Qué hace |
+|---|---|---|
+| «Avisar stock bajo» (`avi010StockBajo0`) | evento `StockBajo` de Materiales (cola `n8n.stock-bajo`) | lee la obra (Obras) y el material (Materiales, `GET /materiales` de a 100 hasta encontrarlo) y manda un *push* al tema `obra-{obraId}-almacenero`: «Stock bajo: {material}» / «{obra}: quedan {cantidad} {unidadPlural} (mínimo {minimo})» |
+| «Recordar diario» (`avi010Diario0000`) | todos los días a las 18:00 de La Paz (y «Ejecutar ahora» en el editor) | por cada obra `EN_EJECUCION` sin entrada del diario de hoy, *push* al tema `obra-{obraId}-maestro`: «Diario pendiente: {obra}». Una obra que falla no detiene a las demás; la ejecución termina fallida con la lista |
+| «Avisar planilla para revisar» (`avi010Planilla00`) | evento `PlanillaPresentada` de Obras (cola `n8n.planilla-presentada`) | correo al cliente de la obra (solo a él, sin copia a cobranzas): «Planilla para revisar: N.º {numero} · {obra} · {periodo}» (o «Planilla corregida para revisar: …» si se volvió a presentar después de una observación), con el neto y el enlace `PORTAL_URL/planillas/{id}`. Si al leerla la planilla ya no está `PRESENTADA` (el cliente la aprobó u observó antes de que llegara el aviso, por ejemplo con n8n apagado), no envía nada y anota el aviso como procesado |
+
+**Variables** (en `infra/.env`; las de Firebase, abajo): `PORTAL_URL` (por defecto `http://localhost:4300`) y, opcional, `N8N_MATERIALES_URL` (por defecto `http://host.docker.internal:8082`; dentro del contenedor se llama `MATERIALES_URL`, como `N8N_OBRAS_URL`). Materiales debe escuchar en todas las interfaces, como Obras y Finanzas.
+
+**Avisos que esperan en la cola:** si n8n no corre (sin el perfil `automatizacion`) o los flujos de *push* no están publicados (sin Firebase), los eventos esperan en sus colas, pero no para siempre: RabbitMQ descarta los de `n8n.stock-bajo` al día y los de `n8n.planilla-presentada` a los 7 días (políticas de `rabbitmq/definiciones.json`). Así, al configurar Firebase días después no llegan de golpe los «Stock bajo» viejos.
+
+**Repetidos:** si el mismo aviso (mismo `id` del sobre) llega dos veces, sale un solo *push* o correo. Cada flujo guarda en sus datos estáticos los `id` de los últimos 500 avisos enviados; se anota al terminar bien, así una ejecución fallida se puede reintentar desde el panel y sí envía. Los datos estáticos solo se guardan en las ejecuciones del flujo publicado (no al probarlo a mano en el editor) y sobreviven a los reinicios de n8n (comprobado el 03/11/2026: el mismo aviso después de reiniciar no volvió a enviar). Reintentos y tiempos como en la cobranza: 3 intentos cada 5 s, 10 s por llamada.
+
+#### Configuración de Firebase (una vez, a mano)
+
+Sin Firebase todo funciona igual, salvo los dos flujos de *push*: n8n los importa pero no los publica (su registro dice «Firebase sin configurar…» y «flujo … importado sin publicar»), y el correo de la planilla sale igual.
+
+1. En la [consola de Firebase](https://console.firebase.google.com/), crea un proyecto (plan gratuito *Spark*: el envío por FCM no tiene costo).
+2. Agrega una app Android con el paquete `com.supervision.appobra` y descarga `google-services.json`: es para la app (`GOOGLE_SERVICES_JSON` al compilar la *development build*, README de `mobile/app-obra`), nunca va a un repositorio.
+3. Configuración del proyecto → **Cuentas de servicio** → **Generar nueva clave privada** (un JSON). De ese archivo, copia a `infra/.env`:
+
+   | Variable | Del JSON |
+   |---|---|
+   | `FIREBASE_PROYECTO_ID` | `project_id` |
+   | `FIREBASE_CUENTA_CORREO` | `client_email` |
+   | `FIREBASE_CLAVE_PRIVADA` | `private_key`: el texto entre comillas tal cual, en **una sola línea con los `\n`**, entre **comillas simples** (`FIREBASE_CLAVE_PRIVADA='-----BEGIN PRIVATE KEY-----\nMIIE…\n-----END PRIVATE KEY-----\n'`) |
+
+   Guarda el JSON fuera de las carpetas de los repositorios (o bórralo) y nunca pegues la clave en un *issue* o *pull request*.
+4. Recrea n8n para que tome las variables: `docker compose --profile automatizacion up -d n8n`. En `docker compose logs n8n` aparece «Publishing workflow with ID: avi010StockBajo0» y «… avi010Diario0000», y en el panel de RabbitMQ la cola `n8n.stock-bajo` tiene 1 consumidor.
+5. Recompila la *development build* de la app con `google-services.json` (`npx expo prebuild --platform android` y `npx expo run:android`, README de `mobile/app-obra`).
+
+**Cómo autentica n8n contra FCM:** credencial «Firebase · cuenta de servicio» (`n8n/credenciales/firebase-fcm.json`) de tipo **Google Service Account API** (`googleApi` en el código de n8n 2.43.7, `GoogleApi.credentials.js`) con «Set up for use in HTTP Request node» activado y el alcance `https://www.googleapis.com/auth/firebase.messaging`. El nodo HTTP Request la usa como credencial predefinida: n8n firma un JWT con la clave privada, lo cambia por un token de Google (`https://oauth2.googleapis.com/token`) y llama a `POST https://fcm.googleapis.com/v1/projects/{FIREBASE_PROYECTO_ID}/messages:send`. El correo y la clave llegan por `CREDENTIALS_OVERWRITE_DATA` (`n8n/secretos.sh`); el repositorio no los tiene.
+
+**Comprobar el *push*** (con Firebase configurado; sin un proyecto de Firebase no se puede): panel de n8n → «Recordar diario» → *Execute workflow* («Ejecutar ahora») → la ejecución termina bien y en el nodo «Enviar push» FCM responde `{"name": "projects/…/messages/…"}` por cada obra sin diario de hoy; registra una salida que deje un material bajo el mínimo → la ejecución de «Avisar stock bajo» termina bien igual. En el celular (*development build*, sesión del almacenero o del maestro de esa obra) llega el aviso y al tocarlo abre el stock o el diario. Si FCM responde `404` o `403`, revisa el `FIREBASE_PROYECTO_ID` y que la clave sea de ese proyecto; `invalid_grant` es una clave o correo mal copiados.
+
+**Cola `notificaciones` de la versión anterior:** la 010 ya no crea el servicio `services/notificaciones`, así que la cola `notificaciones` y su usuario salieron de las definiciones (y `RABBITMQ_NOTIFICACIONES_CLAVE` de `.env.example`; en tu `.env` puede quedar, nadie la lee). `rabbitmq-init` no borra nada: si tu RabbitMQ ya los tenía, bórralos una vez (la cola acumula eventos que nadie lee):
+
+```powershell
+docker compose exec rabbitmq rabbitmqctl delete_queue notificaciones
+docker compose exec rabbitmq rabbitmqctl delete_user notificaciones
+```
 
 ### Base de reportes (401) en la instalación local de PostgreSQL
 
@@ -209,7 +254,7 @@ Hace, en orden: guardas (`SEMILLA_PERMITIDA=si`, bucket `supervision-dev-…`), 
 ./semilla/recargar.ps1        # pide confirmación; -Si la omite (en Bash: ./semilla/recargar.sh [--si])
 ```
 
-Detén antes Obras, Materiales y Finanzas (el script avisa si siguen corriendo). Vacía Finanzas (`datos-prueba:vaciar`) y Materiales (`semilla:vaciar`), las colas de la plataforma en RabbitMQ (`obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y `n8n.*`, para que no lleguen mensajes viejos sobre datos borrados) la base de reportes del servicio de IA (`reportes_db`: tablas `rpt_*`, `evento_aplicado` y `carga_inicial`, con el servicio `psql-cli` y el usuario `ia`; si la base todavía no existe o no responde, avisa y sigue) y el prefijo `fotos/` del bucket; si los usuarios de Keycloak no tienen su `id`, recrea Keycloak para reimportar el realm; y carga todo con la fecha del día (Obras vacía sus tablas en la misma transacción en que carga). Nunca borra el historial de migraciones (tampoco `alembic_version` de `reportes_db`). Al final recuerda correr la **carga inicial** de la base de reportes (401), que la vuelve a llenar por REST con los datos recién cargados.
+Detén antes Obras, Materiales y Finanzas (el script avisa si siguen corriendo). Vacía Finanzas (`datos-prueba:vaciar`) y Materiales (`semilla:vaciar`), las colas de la plataforma en RabbitMQ (`obras`, `materiales`, `finanzas`, `ia`, `plataforma.fallidos` y `n8n.*`, para que no lleguen mensajes viejos sobre datos borrados) la base de reportes del servicio de IA (`reportes_db`: tablas `rpt_*`, `evento_aplicado` y `carga_inicial`, con el servicio `psql-cli` y el usuario `ia`; si la base todavía no existe o no responde, avisa y sigue) y el prefijo `fotos/` del bucket; si los usuarios de Keycloak no tienen su `id`, recrea Keycloak para reimportar el realm; y carga todo con la fecha del día (Obras vacía sus tablas en la misma transacción en que carga). Nunca borra el historial de migraciones (tampoco `alembic_version` de `reportes_db`). Al final recuerda correr la **carga inicial** de la base de reportes (401), que la vuelve a llenar por REST con los datos recién cargados.
 
 ### Datos de prueba del servicio de IA (503)
 
@@ -295,6 +340,20 @@ node pruebas/cobranza.mjs
 5. el mismo `CobroPagado` otra vez → ninguna constancia nueva.
 
 Solo cuenta los correos que llegaron después de empezar. Deja la planilla aprobada y su cobro pagado: recarga los datos antes de repetirla.
+
+## Prueba de los avisos (010)
+
+Con el entorno levantado con `-Perfil automatizacion`, los datos de prueba recién cargados (`./semilla/recargar.ps1`) y Obras corriendo (con el evento `PlanillaPresentada` de la 010):
+
+```powershell
+node pruebas/avisos.mjs
+```
+
+1. residente2 vuelve a presentar la planilla N.º 2 de la obra 2 (observada en los datos de prueba) → Obras publica `PlanillaPresentada` con `reenvio: true` y en menos de 1 minuto llega a Mailpit «Planilla corregida para revisar: N.º 2 · Condominio Las Lomas (12 viviendas) · …» a `demo1@constructora-andina.test` (cliente de la obra), sin copia, con el neto y el enlace `PORTAL_URL/planillas/{id}`;
+2. el mismo sobre otra vez (solo a la cola `n8n.planilla-presentada`) → ningún correo nuevo;
+3. demo1, residente de la obra 3, elabora y presenta la planilla del mes (1 unidad de la primera partida) → «Planilla para revisar: N.º 1 · Unidad Educativa Nueva Esperanza · …» a `cliente1@correo.test`.
+
+Para tener el sobre exacto que publicó Obras, la prueba enlaza un momento la cola temporal `prueba.avisos-010` a `evento.obras.PlanillaPresentada` y la borra al terminar. Deja las dos planillas presentadas: recarga los datos antes de repetirla. El *push* (stock bajo y diario) no se prueba aquí porque necesita un proyecto de Firebase: «Comprobar el *push*», en «Avisos al celular y al cliente».
 
 ## Prueba de punta a punta de la saga «aprobar planilla» (008)
 

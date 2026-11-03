@@ -14,7 +14,7 @@ const env = Object.fromEntries(
 const RABBITMQ = 'http://localhost:15672/api';
 const KEYCLOAK = 'http://localhost:8080';
 const DYNAMODB = 'http://localhost:8000';
-const SERVICIOS_RABBITMQ = ['obras', 'materiales', 'finanzas', 'ia', 'notificaciones'];
+const SERVICIOS_RABBITMQ = ['obras', 'materiales', 'finanzas', 'ia'];
 
 const autorizacionRabbit =
   'Basic ' + Buffer.from(`${env.RABBITMQ_ADMIN_USUARIO}:${env.RABBITMQ_ADMIN_CLAVE}`).toString('base64');
@@ -76,20 +76,20 @@ prueba('RabbitMQ: hay un usuario por servicio con permisos en el vhost "/"', asy
   }
 });
 
-prueba('RabbitMQ: el usuario n8n (201) solo puede leer sus dos colas', async () => {
+prueba('RabbitMQ: el usuario n8n (201 y 010) solo puede leer sus cuatro colas', async () => {
   if (!env.RABBITMQ_N8N_CLAVE) {
     avisos.push('sin RABBITMQ_N8N_CLAVE en .env: no se comprobó el usuario n8n (perfil automatizacion, 201)');
     return;
   }
   const permisos = await rabbit('/users/n8n/permissions');
   afirmar(
-    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.cobro-(emitido|pagado)$`),
+    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.(cobro-emitido|cobro-pagado|stock-bajo|planilla-presentada)$`),
     `permisos de n8n: ${JSON.stringify(permisos)}`,
   );
 });
 
 // --- RabbitMQ: exchange, colas y enlaces (1.5) ---
-// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401, 010 y 201).
+// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401, 201 y 010).
 const ENLACES = JSON.parse(readFileSync(fileURLToPath(new URL('./enlaces.json', import.meta.url)), 'utf8'));
 
 prueba('RabbitMQ: exchange plataforma (topic, durable) y colas durables', async () => {
@@ -111,11 +111,25 @@ prueba('RabbitMQ: cada cola tiene exactamente sus enlaces', async () => {
   }
 });
 
-prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales, ia y notificaciones', async () => {
+// 010 · Los avisos viejos no se acumulan sin fin si n8n no corre o los flujos de push no están publicados (sin Firebase)
+const TTL_N8N = { 'n8n.stock-bajo': 86400000, 'n8n.planilla-presentada': 604800000 };
+
+prueba('RabbitMQ: los avisos de la 010 vencen en sus colas (stock bajo 1 día, planilla presentada 7 días)', async () => {
+  for (const [cola, ttl] of Object.entries(TTL_N8N)) {
+    const datos = await rabbit(`/queues/%2F/${encodeURIComponent(cola)}`);
+    afirmar(
+      datos.effective_policy_definition?.['message-ttl'] === ttl,
+      `${cola}: política ${datos.policy ?? 'ninguna'} con ${JSON.stringify(datos.effective_policy_definition ?? {})}, se esperaba message-ttl ${ttl}`,
+    );
+    afirmar(!datos.arguments?.['x-message-ttl'], `${cola}: el TTL va por política, no en los argumentos de la cola`);
+  }
+});
+
+prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales e ia', async () => {
   const destinos = Object.entries(ENLACES)
     .filter(([, claves]) => claves.includes('evento.obras.ObraRegistrada'))
     .map(([cola]) => cola);
-  afirmar(destinos.sort().join() === 'finanzas,ia,materiales,notificaciones', `destinos: ${destinos}`);
+  afirmar(destinos.sort().join() === 'finanzas,ia,materiales', `destinos: ${destinos}`);
   const ocupadas = await colasOcupadas(destinos);
   if (ocupadas.length) {
     avisos.push(`no se publicó el ObraRegistrada de prueba: colas en uso o con mensajes guardados: ${ocupadas.join(', ')}`);
