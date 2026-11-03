@@ -117,6 +117,53 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e54d682b-c859-5bd5-a995-93ff21aec5d0",
+              "leftValue": "={{ $json.estado === 'PRESENTADA' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "26a0d5e7-e812-5bb6-bba3-38caefd58f36",
+      "name": "¿Sigue presentada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Anota el id del sobre como enviado (los últimos 500) para descartar el mismo aviso si vuelve a llegar\nconst datos = $getWorkflowStaticData('global');\nconst id = $('Planilla presentada').first().json.id;\ndatos.avisos = [...(datos.avisos ?? []).filter((visto) => visto !== id), id].slice(-500);\nreturn [{ json: { id, anotado: true, avisosGuardados: datos.avisos.length } }];\n"
+      },
+      "id": "d87537ed-acf9-5656-818b-a43926ec1c79",
+      "name": "Anotar ya revisada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        560
+      ]
+    },
+    {
+      "parameters": {
         "url": "={{ $env.OBRAS_URL }}/obras/{{ $('Leer planilla').first().json.obraId }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
@@ -129,7 +176,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        880,
+        1100,
         400
       ],
       "credentials": {
@@ -156,7 +203,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
+        1320,
         400
       ],
       "credentials": {
@@ -199,7 +246,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1320,
+        1540,
         400
       ]
     },
@@ -212,7 +259,7 @@
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        1540,
+        1760,
         560
       ]
     },
@@ -226,7 +273,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
+        1760,
         300
       ]
     },
@@ -246,7 +293,7 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        1760,
+        1980,
         300
       ],
       "credentials": {
@@ -268,7 +315,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1980,
+        2200,
         300
       ]
     }
@@ -318,7 +365,25 @@
       "main": [
         [
           {
+            "node": "¿Sigue presentada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Sigue presentada?": {
+      "main": [
+        [
+          {
             "node": "Leer obra",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anotar ya revisada",
             "type": "main",
             "index": 0
           }
