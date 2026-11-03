@@ -34,5 +34,11 @@
   ],
   "n8n.cobro-pagado": [
     "evento.finanzas.CobroPagado"
+  ],
+  "n8n.stock-bajo": [
+    "evento.materiales.StockBajo"
+  ],
+  "n8n.planilla-presentada": [
+    "evento.obras.PlanillaPresentada"
   ]
 }
