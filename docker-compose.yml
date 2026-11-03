@@ -381,6 +381,14 @@ services:
       EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
       COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:-cobranzas@constructora-andina.test}
       COBRANZA_CORREO: ${COBRANZA_CORREO:-cobranzas@constructora-andina.test}
+      # 010 · Avisos: Materiales (stock bajo), enlace del portal en el correo de la planilla y Firebase Cloud Messaging.
+      # Sin las tres de Firebase, iniciar.sh importa los flujos de push sin publicarlos; la cuenta de servicio pasa a
+      # la credencial googleApi por CREDENTIALS_OVERWRITE_DATA (secretos.sh)
+      MATERIALES_URL: ${N8N_MATERIALES_URL:-http://host.docker.internal:8082}
+      PORTAL_URL: ${PORTAL_URL:-http://localhost:4300}
+      FIREBASE_PROYECTO_ID: ${FIREBASE_PROYECTO_ID:-}
+      FIREBASE_CUENTA_CORREO: ${FIREBASE_CUENTA_CORREO:-}
+      FIREBASE_CLAVE_PRIVADA: ${FIREBASE_CLAVE_PRIVADA:-}
       # Destino del reenvío de localhost:8080 (n8n/reenviar-keycloak.mjs)
       REENVIO_KEYCLOAK_HOST: ${N8N_REENVIO_KEYCLOAK_HOST:-keycloak}
       REENVIO_KEYCLOAK_PUERTO: ${N8N_REENVIO_KEYCLOAK_PUERTO:-8080}
