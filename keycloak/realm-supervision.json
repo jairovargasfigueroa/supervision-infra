@@ -78,14 +78,14 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "http://localhost:4200/*"
+        "${ERP_URL:http://localhost:4200}/*"
       ],
       "webOrigins": [
-        "http://localhost:4200"
+        "${ERP_URL:http://localhost:4200}"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4200/*"
+        "post.logout.redirect.uris": "${ERP_URL:http://localhost:4200}/*"
       },
       "protocolMappers": [
         {
@@ -115,14 +115,14 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "http://localhost:4300/*"
+        "${PORTAL_URL:http://localhost:4300}/*"
       ],
       "webOrigins": [
-        "http://localhost:4300"
+        "${PORTAL_URL:http://localhost:4300}"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4300/*"
+        "post.logout.redirect.uris": "${PORTAL_URL:http://localhost:4300}/*"
       },
       "protocolMappers": [
         {
@@ -185,7 +185,7 @@
       "protocol": "openid-connect",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "gateway-secreto-solo-desarrollo",
+      "secret": "${KEYCLOAK_GATEWAY_CLIENT_SECRET:gateway-secreto-solo-desarrollo}",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -306,7 +306,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -326,7 +326,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -346,7 +346,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -366,7 +366,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -386,7 +386,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -406,7 +406,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -426,7 +426,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -446,7 +446,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -466,7 +466,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
