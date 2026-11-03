@@ -29,15 +29,6 @@
     "evento.materiales.MovimientoRegistrado",
     "evento.finanzas.CobroPagado"
   ],
-  "notificaciones": [
-    "evento.obras.ObraRegistrada",
-    "evento.obras.PlanillaPresentada",
-    "evento.obras.PlanillaAprobada",
-    "evento.obras.PlanillaObservada",
-    "evento.materiales.StockBajo",
-    "evento.finanzas.CobroVencido",
-    "evento.finanzas.ContratoRechazado"
-  ],
   "n8n.cobro-emitido": [
     "evento.finanzas.CobroEmitido"
   ],

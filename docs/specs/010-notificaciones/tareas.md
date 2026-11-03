@@ -1,10 +1,11 @@
-# 010 · Notificaciones · tareas de `infra`
+# 010 · Avisos al celular y al cliente · tareas de `infra`
 
-Requisitos y diseño: `docs/specs/010-notificaciones/` de la carpeta que agrupa los proyectos. Contratos: `docs/contratos.md` de este proyecto. Requiere la fase 1 hecha (Docker Compose con RabbitMQ, Keycloak y MongoDB como *replica set*).
+Requisitos y diseño: `docs/specs/010-notificaciones/` de la carpeta que agrupa los proyectos. Reemplazan a las tareas de la versión anterior de la 010 (servicio `services/notificaciones`, que no se crea).
 
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
-- [x] RabbitMQ: cola durable `notificaciones` con sus 7 enlaces (`evento.obras.ObraRegistrada`, `evento.obras.PlanillaPresentada`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.materiales.StockBajo`, `evento.finanzas.CobroVencido`, `evento.finanzas.ContratoRechazado`) en el archivo de definiciones (adelantada en la fase 1, tarea 1.5)
-- [ ] Si el Docker Compose levanta los servicios: servicio `notificaciones` en 8086 con sus variables (sin Firebase por defecto) y el montaje opcional de `secretos/` documentado; puerto 8086 en el README
-- [ ] README: enlace a «Configuración de Firebase (lo hace el usuario)» del diseño de la 010, qué archivos van fuera del repositorio y cómo comprobar en el log si Firebase quedó configurado
-- [ ] Prueba de integración de punta a punta sin Firebase (presentar planilla → notificación del cliente; aprobar → residente y `admin`; mismo mensaje dos veces → sin duplicados)
+- [x] Aplicar «Cambios a contratos y datos» que tocan este proyecto (`README.md`, `docs/`); quitar de las definiciones la cola `notificaciones` y su usuario si ya no se usan
+- [ ] RabbitMQ: colas `n8n.stock-bajo` y `n8n.planilla-presentada` con sus enlaces; permiso de lectura del usuario `n8n`
+- [ ] Credencial de Firebase en n8n sin secretos (`CREDENTIALS_OVERWRITE_DATA`), variables `FIREBASE_PROYECTO_ID` y `PORTAL_URL`; sin Firebase, los flujos de *push* se importan sin publicar
+- [ ] Flujos «Avisar stock bajo», «Recordar diario» y «Avisar planilla para revisar» (JSON con `id` fijo); README con la configuración de Firebase
+- [ ] `pruebas/humo.mjs` con las colas nuevas y `pruebas/avisos.mjs` (correo de planilla en Mailpit, sin repetidos)

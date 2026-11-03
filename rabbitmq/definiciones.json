@@ -45,13 +45,6 @@
       "arguments": {}
     },
     {
-      "name": "notificaciones",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
-    },
-    {
       "name": "n8n.cobro-emitido",
       "vhost": "/",
       "durable": true,
@@ -248,62 +241,6 @@
       "destination": "ia",
       "destination_type": "queue",
       "routing_key": "evento.finanzas.CobroPagado",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.obras.ObraRegistrada",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.obras.PlanillaPresentada",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.obras.PlanillaAprobada",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.obras.PlanillaObservada",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.materiales.StockBajo",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.finanzas.CobroVencido",
-      "arguments": {}
-    },
-    {
-      "source": "plataforma",
-      "vhost": "/",
-      "destination": "notificaciones",
-      "destination_type": "queue",
-      "routing_key": "evento.finanzas.ContratoRechazado",
       "arguments": {}
     },
     {

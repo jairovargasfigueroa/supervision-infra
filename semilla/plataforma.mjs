@@ -29,9 +29,8 @@ const USUARIOS = [
   'admin1', 'gerente1', 'residente1', 'residente2', 'maestro1', 'almacenero1', 'cliente1', 'cliente2', 'demo1',
 ].map((usuario, i) => ({ usuario, id: `a0000000-0000-4000-8000-0000000000${String(i + 1).padStart(2, '0')}` }));
 
-// Colas de la plataforma que se vacían en recargar (rabbitmq/definiciones.json). notificaciones también:
-// sus mensajes viejos apuntarían a obras y planillas borradas cuando exista el servicio de la 010.
-const COLAS = ['obras', 'materiales', 'finanzas', 'ia', 'notificaciones', 'plataforma.fallidos'];
+// Colas de la plataforma que se vacían en recargar (rabbitmq/definiciones.json), más las n8n.* (201 y 010)
+const COLAS = ['obras', 'materiales', 'finanzas', 'ia', 'plataforma.fallidos'];
 const esColaDeLaPlataforma = (nombre) => COLAS.includes(nombre) || nombre.startsWith('n8n.');
 
 const salir = (codigo, mensaje) => {

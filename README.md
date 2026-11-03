@@ -119,6 +119,15 @@ Opcionales (valores por defecto en `docker-compose.yml`): `N8N_PROPIETARIO_NOMBR
 
 **Prueba de punta a punta:** `node pruebas/cobranza.mjs` (abajo, «Prueba de la cobranza automática»).
 
+### Avisos al celular y al cliente (010, perfil `automatizacion`)
+
+**Cola `notificaciones` de la versión anterior:** la 010 ya no crea el servicio `services/notificaciones`, así que la cola `notificaciones` y su usuario salieron de las definiciones (y `RABBITMQ_NOTIFICACIONES_CLAVE` de `.env.example`; en tu `.env` puede quedar, nadie la lee). `rabbitmq-init` no borra nada: si tu RabbitMQ ya los tenía, bórralos una vez (la cola acumula eventos que nadie lee):
+
+```powershell
+docker compose exec rabbitmq rabbitmqctl delete_queue notificaciones
+docker compose exec rabbitmq rabbitmqctl delete_user notificaciones
+```
+
 ### Base de reportes (401) en la instalación local de PostgreSQL
 
 El contenedor (perfil `bases`) crea solo, con el volumen vacío, el usuario `ia` (contraseña `POSTGRES_IA_CLAVE` de `.env`) y la base `reportes_db`, dueña de ese usuario (`postgres/init-reportes.sh`). En tu PostgreSQL instalado en el 5433 hazlo una vez a mano, como `postgres`, con la misma contraseña que pusiste en `.env`:
@@ -209,7 +218,7 @@ Hace, en orden: guardas (`SEMILLA_PERMITIDA=si`, bucket `supervision-dev-…`), 
 ./semilla/recargar.ps1        # pide confirmación; -Si la omite (en Bash: ./semilla/recargar.sh [--si])
 ```
 
-Detén antes Obras, Materiales y Finanzas (el script avisa si siguen corriendo). Vacía Finanzas (`datos-prueba:vaciar`) y Materiales (`semilla:vaciar`), las colas de la plataforma en RabbitMQ (`obras`, `materiales`, `finanzas`, `ia`, `notificaciones`, `plataforma.fallidos` y `n8n.*`, para que no lleguen mensajes viejos sobre datos borrados) la base de reportes del servicio de IA (`reportes_db`: tablas `rpt_*`, `evento_aplicado` y `carga_inicial`, con el servicio `psql-cli` y el usuario `ia`; si la base todavía no existe o no responde, avisa y sigue) y el prefijo `fotos/` del bucket; si los usuarios de Keycloak no tienen su `id`, recrea Keycloak para reimportar el realm; y carga todo con la fecha del día (Obras vacía sus tablas en la misma transacción en que carga). Nunca borra el historial de migraciones (tampoco `alembic_version` de `reportes_db`). Al final recuerda correr la **carga inicial** de la base de reportes (401), que la vuelve a llenar por REST con los datos recién cargados.
+Detén antes Obras, Materiales y Finanzas (el script avisa si siguen corriendo). Vacía Finanzas (`datos-prueba:vaciar`) y Materiales (`semilla:vaciar`), las colas de la plataforma en RabbitMQ (`obras`, `materiales`, `finanzas`, `ia`, `plataforma.fallidos` y `n8n.*`, para que no lleguen mensajes viejos sobre datos borrados) la base de reportes del servicio de IA (`reportes_db`: tablas `rpt_*`, `evento_aplicado` y `carga_inicial`, con el servicio `psql-cli` y el usuario `ia`; si la base todavía no existe o no responde, avisa y sigue) y el prefijo `fotos/` del bucket; si los usuarios de Keycloak no tienen su `id`, recrea Keycloak para reimportar el realm; y carga todo con la fecha del día (Obras vacía sus tablas en la misma transacción en que carga). Nunca borra el historial de migraciones (tampoco `alembic_version` de `reportes_db`). Al final recuerda correr la **carga inicial** de la base de reportes (401), que la vuelve a llenar por REST con los datos recién cargados.
 
 ### Datos de prueba del servicio de IA (503)
 

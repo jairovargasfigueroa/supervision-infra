@@ -24,7 +24,6 @@ crear obras "$RABBITMQ_OBRAS_CLAVE"
 crear materiales "$RABBITMQ_MATERIALES_CLAVE"
 crear finanzas "$RABBITMQ_FINANZAS_CLAVE"
 crear ia "$RABBITMQ_IA_CLAVE"
-crear notificaciones "$RABBITMQ_NOTIFICACIONES_CLAVE"
 
 # 201 · n8n solo consume sus colas (n8n.cobro-emitido y n8n.cobro-pagado, que ya declaran estas definiciones): no
 # declara, no enlaza ni publica nada. Sin RABBITMQ_N8N_CLAVE (quien no usa el perfil automatizacion) no se crea.
