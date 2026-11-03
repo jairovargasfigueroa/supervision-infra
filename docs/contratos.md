@@ -15,6 +15,19 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | n8n (perfil `automatizacion`, 201) | 5678 (editor y panel de ejecuciones) |
 | Mailpit (perfil `automatizacion`, 201) | 1025 (SMTP) · 8025 (buzón web y API) |
 
+### Ensayo local, «producción local» (601)
+
+Tres grupos que hacen de las tres nubes, cada uno con su Caddy (HTTPS con la CA local) en un puerto propio de la máquina, elegidos para no chocar con los de desarrollo. Todas las direcciones son `https://<pieza>.<grupo>.localhost:<puerto del grupo>`:
+
+| Grupo | Puerto HTTPS | Piezas publicadas por su Caddy |
+|---|---|---|
+| `azure` | 8443 | `keycloak`, `gateway`, `obras`, `finanzas`, `n8n`, `mailpit`, `rabbitmq` (panel), `erp`, `mf-obras`, `mf-materiales`, `mf-supervision`, `portal` |
+| `google` | 9443 | `ia`, `materiales` |
+| `aws` | 10443 | `sincronizacion`, `s3` (MinIO) |
+| RabbitMQ (AMQPS, grupo `azure`) | 5671 | `rabbitmq.azure.localhost:5671`, TLS con el certificado de la CA local |
+
+Las bases (PostgreSQL, MongoDB, DynamoDB Local) no se publican en la máquina: solo las ve su grupo.
+
 ## RabbitMQ: usuarios
 
 Un usuario por servicio, con permisos de configurar, escribir y leer en el vhost `/`. La contraseña de cada uno está en `.env` y se copia al `.env` del servicio.
@@ -53,6 +66,18 @@ Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http:/
 | `n8n` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con los roles de realm `automatizacion` y `gerente` y `realm-management: view-users` | — | 201: los flujos de cobranza piden su token con *client credentials* (trae `automatizacion` y `gerente`, `azp = n8n` y la audiencia `plataforma-api`; 5 minutos). `automatizacion` para `GET /cobros/recordatorios`, `POST /cobros/{id}/envios` y `POST /cobros/{id}/nota-cobro` de Finanzas; `gerente` para leer `GET /obras/{id}`, `GET /planillas/{id}` y `GET /cobros/{id}`; `view-users` para `GET /admin/realms/supervision/users/{id}` (nombre y correo del cliente; segunda excepción a la API de administración, junto al gateway). Secreto en `N8N_KEYCLOAK_SECRETO` de `.env` (el realm lo toma al importarse: `"secret": "${N8N_KEYCLOAK_SECRETO}"`; n8n lo recibe por `CREDENTIALS_OVERWRITE_DATA`). Si la variable falta, el `entrypoint` de `keycloak` le pone uno al azar (nunca vacío: Keycloak aceptaría un secreto vacío) y el cliente queda sin uso. Si cambia, se recrea Keycloak |
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
+
+**Importar para producción (601):** el realm toma de variables del contenedor de Keycloak lo que cambia según dónde corre, con el valor de desarrollo por defecto (sintaxis `${VARIABLE:valor por defecto}` de Keycloak al importar): así el mismo archivo sirve en desarrollo (sin definir nada) y en la «producción local» o la nube.
+
+| Variable | Qué fija en el realm | Por defecto (desarrollo) |
+|---|---|---|
+| `ERP_URL` | redirecciones (`ERP_URL/*`), origen web y regreso al cerrar sesión del cliente `erp` | `http://localhost:4200` |
+| `PORTAL_URL` | lo mismo para el cliente `portal` | `http://localhost:4300` |
+| `USUARIOS_PRUEBA_CLAVE` | contraseña de los 9 usuarios de prueba (en producción, distinta de `Prueba123!`, que está en el repositorio público) | `Prueba123!` |
+| `KEYCLOAK_GATEWAY_CLIENT_SECRET` | secreto del cliente `gateway` (el mismo nombre que usa el gateway) | `gateway-secreto-solo-desarrollo` |
+| `IA_REPORTES_CLIENT_SECRET`, `IA_AGENTES_CLIENT_SECRET`, `N8N_KEYCLOAK_SECRETO` | secretos de los clientes de servicio (ya por variable, sin valor por defecto) | `infra/.env` |
+
+`KC_HOSTNAME` no es del realm sino del servidor: la dirección pública de Keycloak (URL completa, por ejemplo `https://keycloak.azure.localhost:8443`). Con ella el emisor de los tokens es siempre `KC_HOSTNAME/realms/supervision`, aunque el pedido entre por la red interna, y los servicios validan ese emisor. En desarrollo no se usa (`start-dev`, emisor `http://localhost:8080/realms/supervision`).
 
 Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`. Desde otro script, `obtenerTokensUsuario(usuario, { clientId, redirectUri, scope })` devuelve la respuesta completa (por ejemplo, con `scope: 'openid offline_access'` y `clientId: 'app-obra'`, el *refresh token* `Offline` de la 101).
 
@@ -118,3 +143,18 @@ La cola `notificaciones` y su usuario (versión anterior de la 010, servicio `se
 - **Colas que vacía `recargar`** (API del panel, `DELETE /api/queues/%2F/{cola}/contents`, solo las que existan): `obras`, `materiales`, `finanzas`, `ia`, `plataforma.fallidos` y las `n8n.*` (201 y 010: sus mensajes viejos apuntan a cobros, planillas y obras borrados).
 - **Fotos:** `s3-cli` (perfil `herramientas`) sube `semilla/fotos/` a `s3://$S3_BUCKET/fotos/` con `aws s3 sync` y `recargar` borra ese prefijo. Un `S3_BUCKET` que no empiece con `supervision-dev-` se rechaza; si faltan el bucket o las claves, la semilla salta las fotos con un aviso y sigue (las filas de las fotos se cargan igual en Obras).
 - **Keycloak:** la semilla comprueba con la API de administración que los 9 usuarios existen con su `id`; si no, se detiene. `recargar` reimporta el realm (`docker compose up -d --force-recreate keycloak`).
+
+### Datos de demostración (601)
+
+- `semilla.ps1 -Entorno <archivo>` (`semilla.sh --entorno <archivo>`) lee ese archivo en lugar de `infra/.env` (por ejemplo `produccion-local/.env`). Con `SEMILLA_DEMO=si` en él, la semilla **carga** aunque no esté `SEMILLA_PERMITIDA=si` y acepta cualquier bucket (no solo `supervision-dev-…`). `recargar` **nunca** corre con `SEMILLA_DEMO=si` (sin excepción): en producción no se vacía nada.
+- En modo demostración, cada servicio carga su parte **con su imagen de producción** (`docker compose run --rm` en el grupo donde corre, con su configuración de producción y `SEMILLA_DEMO=si`), no desde la carpeta del proyecto:
+
+| Servicio | Comando en su imagen | Variable con el *compose* del grupo |
+|---|---|---|
+| Obras | el comando de la imagen con `SPRING_PROFILES_ACTIVE=prod,semilla` | `SEMILLA_COMPOSE_OBRAS` |
+| Finanzas | `php artisan db:seed --class=DatosPruebaSeeder --force` | `SEMILLA_COMPOSE_FINANZAS` |
+| Materiales | `node dist/semilla/main.js cargar` | `SEMILLA_COMPOSE_MATERIALES` |
+| Fotos | `s3-cli` (AWS CLI, con `AWS_ENDPOINT_URL` del S3 compatible) | `SEMILLA_COMPOSE_S3` |
+
+  Mover un servicio de grupo solo cambia su variable. Cada servicio recibe `SEMILLA_DEMO=si` y `SEMILLA_FECHA`; su guarda acepta la carga en modo producción o con una base no local, y sigue rechazando el vaciado.
+- Después, la carga inicial de la base de reportes (401) con el comando `ia-carga-inicial` de la imagen de IA.
