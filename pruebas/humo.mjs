@@ -111,6 +111,20 @@ prueba('RabbitMQ: cada cola tiene exactamente sus enlaces', async () => {
   }
 });
 
+// 010 · Los avisos viejos no se acumulan sin fin si n8n no corre o los flujos de push no están publicados (sin Firebase)
+const TTL_N8N = { 'n8n.stock-bajo': 86400000, 'n8n.planilla-presentada': 604800000 };
+
+prueba('RabbitMQ: los avisos de la 010 vencen en sus colas (stock bajo 1 día, planilla presentada 7 días)', async () => {
+  for (const [cola, ttl] of Object.entries(TTL_N8N)) {
+    const datos = await rabbit(`/queues/%2F/${encodeURIComponent(cola)}`);
+    afirmar(
+      datos.effective_policy_definition?.['message-ttl'] === ttl,
+      `${cola}: política ${datos.policy ?? 'ninguna'} con ${JSON.stringify(datos.effective_policy_definition ?? {})}, se esperaba message-ttl ${ttl}`,
+    );
+    afirmar(!datos.arguments?.['x-message-ttl'], `${cola}: el TTL va por política, no en los argumentos de la cola`);
+  }
+});
+
 prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales e ia', async () => {
   const destinos = Object.entries(ENLACES)
     .filter(([, claves]) => claves.includes('evento.obras.ObraRegistrada'))

@@ -289,5 +289,27 @@
       "routing_key": "evento.obras.PlanillaPresentada",
       "arguments": {}
     }
+  ],
+  "policies": [
+    {
+      "vhost": "/",
+      "name": "n8n-stock-bajo-ttl",
+      "pattern": "^n8n\\.stock-bajo$",
+      "apply-to": "queues",
+      "definition": {
+        "message-ttl": 86400000
+      },
+      "priority": 0
+    },
+    {
+      "vhost": "/",
+      "name": "n8n-planilla-presentada-ttl",
+      "pattern": "^n8n\\.planilla-presentada$",
+      "apply-to": "queues",
+      "definition": {
+        "message-ttl": 604800000
+      },
+      "priority": 0
+    }
   ]
 }

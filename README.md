@@ -131,6 +131,8 @@ Tres flujos más de n8n, junto a los de la cobranza:
 
 **Variables** (en `infra/.env`; las de Firebase, abajo): `PORTAL_URL` (por defecto `http://localhost:4300`) y, opcional, `N8N_MATERIALES_URL` (por defecto `http://host.docker.internal:8082`; dentro del contenedor se llama `MATERIALES_URL`, como `N8N_OBRAS_URL`). Materiales debe escuchar en todas las interfaces, como Obras y Finanzas.
 
+**Avisos que esperan en la cola:** si n8n no corre (sin el perfil `automatizacion`) o los flujos de *push* no están publicados (sin Firebase), los eventos esperan en sus colas, pero no para siempre: RabbitMQ descarta los de `n8n.stock-bajo` al día y los de `n8n.planilla-presentada` a los 7 días (políticas de `rabbitmq/definiciones.json`). Así, al configurar Firebase días después no llegan de golpe los «Stock bajo» viejos.
+
 **Repetidos:** si el mismo aviso (mismo `id` del sobre) llega dos veces, sale un solo *push* o correo. Cada flujo guarda en sus datos estáticos los `id` de los últimos 500 avisos enviados; se anota al terminar bien, así una ejecución fallida se puede reintentar desde el panel y sí envía. Los datos estáticos solo se guardan en las ejecuciones del flujo publicado (no al probarlo a mano en el editor) y sobreviven a los reinicios de n8n (comprobado el 03/11/2026: el mismo aviso después de reiniciar no volvió a enviar). Reintentos y tiempos como en la cobranza: 3 intentos cada 5 s, 10 s por llamada.
 
 #### Configuración de Firebase (una vez, a mano)
