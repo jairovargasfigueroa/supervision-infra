@@ -32,6 +32,7 @@ node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (
 node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
 ./scripts/levantar.ps1 -Perfil automatizacion   # 201 y 010: además n8n (5678) y Mailpit (8025); variables y Firebase en el README
 node pruebas/cobranza.mjs         # 201: cobranza automática de punta a punta (con los servicios, n8n y Mailpit)
+node pruebas/avisos.mjs           # 010: correo «Planilla para revisar» en Mailpit y sin repetidos (con Obras, n8n y Mailpit)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
 node semilla/eventos-ia.mjs       # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
@@ -67,6 +68,7 @@ pruebas/humo.mjs          pruebas de humo del entorno levantado
 pruebas/saga.mjs          prueba de punta a punta de la saga (008)
 pruebas/reportes.mjs      prueba de integración de la base de reportes (401): eventos y carga inicial
 pruebas/cobranza.mjs      prueba de punta a punta de la cobranza automática (201): correos en Mailpit y envíos en Finanzas
+pruebas/avisos.mjs        prueba del correo «Planilla para revisar» (010): Mailpit y avisos repetidos
 semilla/
   semilla.ps1 · .sh       carga los datos de prueba (011): guardas, D, Keycloak, Obras → Finanzas → Materiales, fotos, resumen
   recargar.ps1 · .sh      vacía (servicios, colas, reportes_db, bucket) y vuelve a cargar; pide la carga inicial (401)

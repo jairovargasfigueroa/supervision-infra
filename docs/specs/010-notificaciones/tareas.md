@@ -8,4 +8,6 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] RabbitMQ: colas `n8n.stock-bajo` y `n8n.planilla-presentada` con sus enlaces; permiso de lectura del usuario `n8n`
 - [x] Credencial de Firebase en n8n sin secretos (`CREDENTIALS_OVERWRITE_DATA`), variables `FIREBASE_PROYECTO_ID` y `PORTAL_URL`; sin Firebase, los flujos de *push* se importan sin publicar
 - [x] Flujos «Avisar stock bajo», «Recordar diario» y «Avisar planilla para revisar» (JSON con `id` fijo); README con la configuración de Firebase
-- [ ] `pruebas/humo.mjs` con las colas nuevas y `pruebas/avisos.mjs` (correo de planilla en Mailpit, sin repetidos)
+- [x] `pruebas/humo.mjs` con las colas nuevas y `pruebas/avisos.mjs` (correo de planilla en Mailpit, sin repetidos)
+
+Pendiente al cerrar la 010: correr `node pruebas/avisos.mjs` con Obras ya publicando `PlanillaPresentada` (el flujo y la mecánica de repetidos se comprobaron con sobres publicados a mano el 03/11/2026).

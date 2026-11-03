@@ -339,6 +339,20 @@ node pruebas/cobranza.mjs
 
 Solo cuenta los correos que llegaron después de empezar. Deja la planilla aprobada y su cobro pagado: recarga los datos antes de repetirla.
 
+## Prueba de los avisos (010)
+
+Con el entorno levantado con `-Perfil automatizacion`, los datos de prueba recién cargados (`./semilla/recargar.ps1`) y Obras corriendo (con el evento `PlanillaPresentada` de la 010):
+
+```powershell
+node pruebas/avisos.mjs
+```
+
+1. residente2 vuelve a presentar la planilla N.º 2 de la obra 2 (observada en los datos de prueba) → Obras publica `PlanillaPresentada` con `reenvio: true` y en menos de 1 minuto llega a Mailpit «Planilla corregida para revisar: N.º 2 · Condominio Las Lomas (12 viviendas) · …» a `demo1@constructora-andina.test` (cliente de la obra), sin copia, con el neto y el enlace `PORTAL_URL/planillas/{id}`;
+2. el mismo sobre otra vez (solo a la cola `n8n.planilla-presentada`) → ningún correo nuevo;
+3. demo1, residente de la obra 3, elabora y presenta la planilla del mes (1 unidad de la primera partida) → «Planilla para revisar: N.º 1 · Unidad Educativa Nueva Esperanza · …» a `cliente1@correo.test`.
+
+Para tener el sobre exacto que publicó Obras, la prueba enlaza un momento la cola temporal `prueba.avisos-010` a `evento.obras.PlanillaPresentada` y la borra al terminar. Deja las dos planillas presentadas: recarga los datos antes de repetirla. El *push* (stock bajo y diario) no se prueba aquí porque necesita un proyecto de Firebase: «Comprobar el *push*», en «Avisos al celular y al cliente».
+
 ## Prueba de punta a punta de la saga «aprobar planilla» (008)
 
 Con el entorno levantado y los servicios corriendo (Obras, Materiales, Finanzas con `mensajeria:consumir` **y** `mensajeria:publicar`, y el gateway):
