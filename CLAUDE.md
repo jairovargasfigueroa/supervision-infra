@@ -1,6 +1,6 @@
 # Infra (entorno de desarrollo)
 
-Entorno de desarrollo de la plataforma: Docker Compose con RabbitMQ, Keycloak y DynamoDB Local (y PostgreSQL y MongoDB como perfil opcional), el realm `supervision`, las definiciones de RabbitMQ y los scripts para levantar, ver el estado y reiniciar todo, la carga de los datos de prueba (011, carpeta `semilla/`), la automatización de cobranza con n8n y Mailpit (201, perfil `automatizacion`) y las pruebas de punta a punta.
+Entorno de desarrollo de la plataforma: Docker Compose con RabbitMQ, Keycloak y DynamoDB Local (y PostgreSQL y MongoDB como perfil opcional), el realm `supervision`, las definiciones de RabbitMQ y los scripts para levantar, ver el estado y reiniciar todo, la carga de los datos de prueba (011, carpeta `semilla/`), la automatización de cobranza y los avisos con n8n y Mailpit (201 y 010, perfil `automatizacion`; *push* por Firebase Cloud Messaging) y las pruebas de punta a punta.
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales. Lo que corre aquí, sus versiones y puertos están en `docs/entorno-local.md` de esa carpeta: **es la fuente; si algo cambia, se actualiza allí también.**
 
@@ -9,7 +9,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 ## Stack
 
 - Docker Compose (Docker Desktop con WSL 2)
-- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo), `ollama/ollama:0.40.4` (perfil `ollama`, 503: modelo de lenguaje local; GPU opcional con `docker-compose.gpu.yml`), `n8nio/n8n:2.43.7` y `axllent/mailpit:v1.31.6` (perfil `automatizacion`, 201: flujos de cobranza y buzón de correo de prueba)
+- Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo), `ollama/ollama:0.40.4` (perfil `ollama`, 503: modelo de lenguaje local; GPU opcional con `docker-compose.gpu.yml`), `n8nio/n8n:2.43.7` y `axllent/mailpit:v1.31.6` (perfil `automatizacion`, 201 y 010: flujos de cobranza y de avisos, y buzón de correo de prueba)
 - Scripts en PowerShell (`.ps1`, Windows) y Bash (`.sh`, Linux y macOS) que hacen lo mismo
 - Pruebas de humo con Node 24 (`node pruebas/humo.mjs`, sin dependencias)
 
@@ -30,7 +30,7 @@ docker compose --profile ollama up -d ollama   # 503: modelo de lenguaje local (
 node pruebas/humo.mjs             # comprueba realm (con la sesión offline de la app), colas, enlaces y DynamoDB Local contra lo que está corriendo
 node pruebas/saga.mjs             # saga «aprobar planilla» de punta a punta (008; con los servicios corriendo)
 node pruebas/reportes.mjs [--carga]  # base de reportes (401): eventos y carga inicial (con los servicios y el de IA corriendo)
-./scripts/levantar.ps1 -Perfil automatizacion   # 201: además n8n (5678) y Mailpit (8025); variables en el README
+./scripts/levantar.ps1 -Perfil automatizacion   # 201 y 010: además n8n (5678) y Mailpit (8025); variables y Firebase en el README
 node pruebas/cobranza.mjs         # 201: cobranza automática de punta a punta (con los servicios, n8n y Mailpit)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
@@ -55,7 +55,7 @@ postgres/vaciar-reportes.sql vacía el modelo de lectura en recargar (401; lo co
 mongo/iniciar-replica.js  rs.initiate() del replica set rs0 (perfil bases)
 mongo/vaciar-ia.js        503: vacía ia_db.consumo_atipico en recargar (lo corre el servicio mongo-cli)
 ia/reenviar-keycloak.py   401: dentro de los contenedores de IA, localhost:8080 → keycloak:8080 (mismo emisor de tokens)
-n8n/                      201 (perfil automatizacion): iniciar.sh, reenviar-keycloak.mjs, flujos/ y credenciales/ (sin secretos)
+n8n/                      201 y 010 (perfil automatizacion): iniciar.sh, secretos.sh, reenviar-keycloak.mjs, flujos/ y credenciales/ (sin secretos)
 rabbitmq/
   definiciones.json       vhost, exchange plataforma, colas y enlaces (sin usuarios)
   iniciar.sh              importa las definiciones y crea los usuarios por servicio desde .env (API del panel)
@@ -82,7 +82,7 @@ docs/                     estructura, contratos y tareas por funcionalidad
 
 - **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»).
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
-- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`); igual el de `ia-agentes` (501, `${IA_AGENTES_CLIENT_SECRET}`) y el de `n8n` (201, `${N8N_KEYCLOAK_SECRETO}`; si falta, Keycloak le pone uno al azar). Las credenciales de n8n se guardan sin secretos y los reciben por `CREDENTIALS_OVERWRITE_DATA`.
+- Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`); igual el de `ia-agentes` (501, `${IA_AGENTES_CLIENT_SECRET}`) y el de `n8n` (201, `${N8N_KEYCLOAK_SECRETO}`; si falta, Keycloak le pone uno al azar). Las credenciales de n8n se guardan sin secretos y los reciben por `CREDENTIALS_OVERWRITE_DATA` (también la cuenta de servicio de Firebase, 010).
 - Las variables nuevas de un perfil opcional van con valor por defecto vacío (`${VAR:-}`): ningún perfil puede romper `docker compose` de los demás.
 - Las colas y enlaces de RabbitMQ siguen `docs/contratos/eventos.md` de la carpeta general (y las specs que agregan colas). Un enlace nuevo se agrega en `rabbitmq/definiciones.json`, en `docs/contratos.md` y en `pruebas/humo.mjs`.
 - Los cambios al realm se hacen en `keycloak/realm-supervision.json` y se comprueban con `./scripts/reiniciar-datos.ps1` (Keycloak solo importa un realm que no existe).

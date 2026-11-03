@@ -1,0 +1,481 @@
+{
+  "id": "avi010Diario0000",
+  "name": "Recordar diario",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 18,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "52527f3b-2cd4-5039-a9a3-670c0c8f9e61",
+      "name": "Todos los días 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "9b56be79-2f3d-5b13-bbad-6cd10e61fc33",
+      "name": "Ejecutar ahora",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OBRAS_URL }}/obras?estado=EN_EJECUCION",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "ab5645da-ab29-5275-bc09-088219be0d3d",
+      "name": "Pedir obras",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "c42244db-602f-59d4-a793-b59aa60bb1d7",
+      "name": "Recorrer obras",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OBRAS_URL }}/obras/{{ $json.id }}/diario?desde={{ $now.setZone('America/La_Paz').toFormat('yyyy-MM-dd') }}&hasta={{ $now.setZone('America/La_Paz').toFormat('yyyy-MM-dd') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "f8fcdad8-06fe-5bb9-aec9-7cfc2220872e",
+      "name": "Leer diario de hoy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e69aa0e4-bb17-5523-bfea-3504c5df3a57",
+              "leftValue": "={{ JSON.parse($json.data).length === 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b4223a25-d4fc-51d9-87c9-62bd25db994a",
+      "name": "¿Sin diario?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const obra = $('Recorrer obras').item.json;\nreturn {\n  json: {\n    obraId: obra.id,\n    obra: obra.nombre,\n    tema: `obra-${obra.id}-maestro`,\n    titulo: `Diario pendiente: ${obra.nombre}`,\n    cuerpo: 'Todavía no registraste el diario de hoy. Si ya lo registraste sin señal, se enviará al volver la señal.',\n    datos: { tipo: 'DIARIO', obraId: String(obra.id) },\n  },\n};\n"
+      },
+      "id": "8a091211-8e57-51c1-b561-b452d0693da9",
+      "name": "Armar aviso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fcm.googleapis.com/v1/projects/{{ $env.FIREBASE_PROYECTO_ID }}/messages:send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: { topic: $json.tema, notification: { title: $json.titulo, body: $json.cuerpo }, data: $json.datos, android: { priority: 'high' } } }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "50e0fac4-de63-5b53-8dc7-664de5c15c7f",
+      "name": "Enviar push",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        300
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "cred010Firebase1",
+          "name": "Firebase · cuenta de servicio"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const obra = $('Recorrer obras').item.json;\nreturn { json: { obraId: obra.id, obra: obra.nombre, avisado: true, ok: true, mensaje: $json.name } };\n"
+      },
+      "id": "48ce93a1-8040-520e-b1af-6a66315145c5",
+      "name": "Avisado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const obra = $('Recorrer obras').item.json;\nreturn { json: { obraId: obra.id, obra: obra.nombre, avisado: false, ok: true } };\n"
+      },
+      "id": "ea27a919-e393-5c26-8e81-dd5b62b658d7",
+      "name": "Con diario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Una obra que falla no detiene a las demás: queda con su motivo y la ejecución termina como fallida («Fallaron avisos»)\nconst obra = $('Recorrer obras').item.json;\nconst error = $json.error;\nconst motivo = typeof error === 'string' ? error : error?.message ?? JSON.stringify(error);\nreturn { json: { obraId: obra.id, obra: obra.nombre, avisado: false, ok: false, motivo } };\n"
+      },
+      "id": "275dd81b-342e-584e-a703-2f9d5606d6ba",
+      "name": "No avisado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resultados = $input.all().map((item) => item.json).filter((r) => r.obraId);\nreturn [{\n  json: {\n    obras: resultados.length,\n    avisadas: resultados.filter((r) => r.avisado).map((r) => r.obra),\n    errores: resultados.filter((r) => !r.ok).map((r) => `${r.obra}: ${r.motivo}`),\n  },\n}];\n"
+      },
+      "id": "79e50de3-b851-5a9c-b898-0d620c90020d",
+      "name": "Resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1b563d87-937c-586a-a2ec-f55f63ec622d",
+              "leftValue": "={{ $json.errores.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f2621b3f-f080-5f27-bfbc-7a9998c22052",
+      "name": "¿Hubo errores?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'No se avisó a ' + $json.errores.length + ' obras. ' + $json.errores.join(' · ') }}"
+      },
+      "id": "0a9fa360-6793-5688-9438-65d0b0e7de33",
+      "name": "Fallaron avisos",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        40
+      ]
+    }
+  ],
+  "connections": {
+    "Todos los días 18:00": {
+      "main": [
+        [
+          {
+            "node": "Pedir obras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedir obras": {
+      "main": [
+        [
+          {
+            "node": "Recorrer obras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar ahora": {
+      "main": [
+        [
+          {
+            "node": "Pedir obras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recorrer obras": {
+      "main": [
+        [
+          {
+            "node": "Resumen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer diario de hoy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer diario de hoy": {
+      "main": [
+        [
+          {
+            "node": "¿Sin diario?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No avisado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Sin diario?": {
+      "main": [
+        [
+          {
+            "node": "Armar aviso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Con diario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar aviso": {
+      "main": [
+        [
+          {
+            "node": "Enviar push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar push": {
+      "main": [
+        [
+          {
+            "node": "Avisado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No avisado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avisado": {
+      "main": [
+        [
+          {
+            "node": "Recorrer obras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Con diario": {
+      "main": [
+        [
+          {
+            "node": "Recorrer obras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No avisado": {
+      "main": [
+        [
+          {
+            "node": "Recorrer obras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumen": {
+      "main": [
+        [
+          {
+            "node": "¿Hubo errores?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hubo errores?": {
+      "main": [
+        [
+          {
+            "node": "Fallaron avisos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/La_Paz",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": []
+}

@@ -121,6 +121,40 @@ Opcionales (valores por defecto en `docker-compose.yml`): `N8N_PROPIETARIO_NOMBR
 
 ### Avisos al celular y al cliente (010, perfil `automatizacion`)
 
+Tres flujos más de n8n, junto a los de la cobranza:
+
+| Flujo | Cuándo | Qué hace |
+|---|---|---|
+| «Avisar stock bajo» (`avi010StockBajo0`) | evento `StockBajo` de Materiales (cola `n8n.stock-bajo`) | lee la obra (Obras) y el material (Materiales, `GET /materiales` de a 100 hasta encontrarlo) y manda un *push* al tema `obra-{obraId}-almacenero`: «Stock bajo: {material}» / «{obra}: quedan {cantidad} {unidadPlural} (mínimo {minimo})» |
+| «Recordar diario» (`avi010Diario0000`) | todos los días a las 18:00 de La Paz (y «Ejecutar ahora» en el editor) | por cada obra `EN_EJECUCION` sin entrada del diario de hoy, *push* al tema `obra-{obraId}-maestro`: «Diario pendiente: {obra}». Una obra que falla no detiene a las demás; la ejecución termina fallida con la lista |
+| «Avisar planilla para revisar» (`avi010Planilla00`) | evento `PlanillaPresentada` de Obras (cola `n8n.planilla-presentada`) | correo al cliente de la obra (solo a él, sin copia a cobranzas): «Planilla para revisar: N.º {numero} · {obra} · {periodo}» (o «Planilla corregida para revisar: …» si se volvió a presentar después de una observación), con el neto y el enlace `PORTAL_URL/planillas/{id}` |
+
+**Variables** (en `infra/.env`; las de Firebase, abajo): `PORTAL_URL` (por defecto `http://localhost:4300`) y, opcional, `N8N_MATERIALES_URL` (por defecto `http://host.docker.internal:8082`; dentro del contenedor se llama `MATERIALES_URL`, como `N8N_OBRAS_URL`). Materiales debe escuchar en todas las interfaces, como Obras y Finanzas.
+
+**Repetidos:** si el mismo aviso (mismo `id` del sobre) llega dos veces, sale un solo *push* o correo. Cada flujo guarda en sus datos estáticos los `id` de los últimos 500 avisos enviados; se anota al terminar bien, así una ejecución fallida se puede reintentar desde el panel y sí envía. Los datos estáticos solo se guardan en las ejecuciones del flujo publicado (no al probarlo a mano en el editor) y sobreviven a los reinicios de n8n (comprobado el 03/11/2026: el mismo aviso después de reiniciar no volvió a enviar). Reintentos y tiempos como en la cobranza: 3 intentos cada 5 s, 10 s por llamada.
+
+#### Configuración de Firebase (una vez, a mano)
+
+Sin Firebase todo funciona igual, salvo los dos flujos de *push*: n8n los importa pero no los publica (su registro dice «Firebase sin configurar…» y «flujo … importado sin publicar»), y el correo de la planilla sale igual.
+
+1. En la [consola de Firebase](https://console.firebase.google.com/), crea un proyecto (plan gratuito *Spark*: el envío por FCM no tiene costo).
+2. Agrega una app Android con el paquete `com.supervision.appobra` y descarga `google-services.json`: es para la app (`GOOGLE_SERVICES_JSON` al compilar la *development build*, README de `mobile/app-obra`), nunca va a un repositorio.
+3. Configuración del proyecto → **Cuentas de servicio** → **Generar nueva clave privada** (un JSON). De ese archivo, copia a `infra/.env`:
+
+   | Variable | Del JSON |
+   |---|---|
+   | `FIREBASE_PROYECTO_ID` | `project_id` |
+   | `FIREBASE_CUENTA_CORREO` | `client_email` |
+   | `FIREBASE_CLAVE_PRIVADA` | `private_key`: el texto entre comillas tal cual, en **una sola línea con los `\n`**, entre **comillas simples** (`FIREBASE_CLAVE_PRIVADA='-----BEGIN PRIVATE KEY-----\nMIIE…\n-----END PRIVATE KEY-----\n'`) |
+
+   Guarda el JSON fuera de las carpetas de los repositorios (o bórralo) y nunca pegues la clave en un *issue* o *pull request*.
+4. Recrea n8n para que tome las variables: `docker compose --profile automatizacion up -d n8n`. En `docker compose logs n8n` aparece «Publishing workflow with ID: avi010StockBajo0» y «… avi010Diario0000», y en el panel de RabbitMQ la cola `n8n.stock-bajo` tiene 1 consumidor.
+5. Recompila la *development build* de la app con `google-services.json` (`npx expo prebuild --platform android` y `npx expo run:android`, README de `mobile/app-obra`).
+
+**Cómo autentica n8n contra FCM:** credencial «Firebase · cuenta de servicio» (`n8n/credenciales/firebase-fcm.json`) de tipo **Google Service Account API** (`googleApi` en el código de n8n 2.43.7, `GoogleApi.credentials.js`) con «Set up for use in HTTP Request node» activado y el alcance `https://www.googleapis.com/auth/firebase.messaging`. El nodo HTTP Request la usa como credencial predefinida: n8n firma un JWT con la clave privada, lo cambia por un token de Google (`https://oauth2.googleapis.com/token`) y llama a `POST https://fcm.googleapis.com/v1/projects/{FIREBASE_PROYECTO_ID}/messages:send`. El correo y la clave llegan por `CREDENTIALS_OVERWRITE_DATA` (`n8n/secretos.sh`); el repositorio no los tiene.
+
+**Comprobar el *push*** (con Firebase configurado; sin un proyecto de Firebase no se puede): panel de n8n → «Recordar diario» → *Execute workflow* («Ejecutar ahora») → la ejecución termina bien y en el nodo «Enviar push» FCM responde `{"name": "projects/…/messages/…"}` por cada obra sin diario de hoy; registra una salida que deje un material bajo el mínimo → la ejecución de «Avisar stock bajo» termina bien igual. En el celular (*development build*, sesión del almacenero o del maestro de esa obra) llega el aviso y al tocarlo abre el stock o el diario. Si FCM responde `404` o `403`, revisa el `FIREBASE_PROYECTO_ID` y que la clave sea de ese proyecto; `invalid_grant` es una clave o correo mal copiados.
+
 **Cola `notificaciones` de la versión anterior:** la 010 ya no crea el servicio `services/notificaciones`, así que la cola `notificaciones` y su usuario salieron de las definiciones (y `RABBITMQ_NOTIFICACIONES_CLAVE` de `.env.example`; en tu `.env` puede quedar, nadie la lee). `rabbitmq-init` no borra nada: si tu RabbitMQ ya los tenía, bórralos una vez (la cola acumula eventos que nadie lee):
 
 ```powershell
