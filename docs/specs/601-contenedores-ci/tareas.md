@@ -9,5 +9,5 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Scripts de la semilla con `SEMILLA_DEMO=si` (solo `semilla`, nunca `recargar`) y fotos al S3 configurado
 - [x] `produccion-local/`: CA local y certificado de RabbitMQ, Caddyfile por grupo (el de `azure` también sirve los 5 frontends con las reglas del diseño), `compose.azure.yml`, `compose.google.yml`, `compose.aws.yml`, `.env.example`, `publicar-frontends`, `levantar` (todo o por grupo) y `bajar`
 - [x] `pruebas/humo-despliegue.mjs` con `--entorno` y `--completa`
-- [ ] Ensayo completo: levantar, cargar datos de demostración, correr la prueba de humo completa y documentar en el README lo que ocupa y cómo usarlo
+- [x] Ensayo completo: levantar, cargar datos de demostración, correr la prueba de humo completa y documentar en el README lo que ocupa y cómo usarlo
 - [x] `.github/workflows/ci.yml`: job `prueba` (`docker compose config -q` de todos los perfiles y de `produccion-local`, realm, definiciones y flujos bien formados) (sin imagen)

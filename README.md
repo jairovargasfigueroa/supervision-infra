@@ -209,8 +209,48 @@ Los puertos se eligieron para no chocar con los de desarrollo (`docs/convencione
 2. `./produccion-local/levantar.ps1` (en Bash, `./produccion-local/levantar.sh`). En orden: genera la CA local y el certificado de RabbitMQ (`certificados.ps1`, OpenSSL en un contenedor), **construye** las imágenes desde las carpetas de los proyectos (o, con `-DesdeGhcr`, descarga las publicadas con la etiqueta `main`), compila y publica los frontends (`publicar-frontends.ps1`), levanta `azure`, `google` y `aws` esperando a que cada uno esté sano, carga los **datos de demostración** (`semilla.ps1 -Entorno produccion-local/.env`, con `SEMILLA_DEMO=si`) y corre la **carga inicial** de la base de reportes.
 3. Abre `https://erp.azure.localhost:8443` y `https://portal.azure.localhost:8443` (usuarios de `docs/datos-prueba.md`, con `USUARIOS_PRUEBA_CLAVE`).
 4. `node pruebas/humo-despliegue.mjs --entorno produccion-local/.env [--completa]`.
+5. Al terminar, `./produccion-local/bajar.ps1` (libera la RAM y conserva los datos).
 
 Opciones de `levantar`: `-Grupo azure|google|aws` (solo ese grupo; si la laptop no alcanza para los tres, primero `azure`, el centro, y después los otros: los datos se cargan a mano cuando estén los tres), `-DesdeGhcr`, `-SinCompilar` (publica los frontends con la carpeta compilada que ya tienen), `-SinFrontends`, `-SinDatos` y `-ConOllama`. Para bajarlo: `./produccion-local/bajar.ps1 [-Grupo …]` (conserva los datos) o con `-Datos` (borra sus volúmenes; al levantar, Keycloak vuelve a importar el realm y las bases empiezan vacías).
+
+### Las veces siguientes
+
+- Antes de levantar, **detén el entorno de desarrollo** (`./scripts/bajar.ps1`) para dejarle la RAM: el ensayo solo ya usa unos 4 GB.
+- `./produccion-local/levantar.ps1 -SinCompilar` vuelve a subir los tres grupos con los datos que tenían. Construir las imágenes otra vez es rápido si no cambió el código (Docker reusa sus capas); `-SinCompilar` evita recompilar los 5 frontends. La semilla de demostración se vuelve a correr y no duplica nada (en el resumen, `insertados` en 0).
+- Para empezar de cero: `./produccion-local/bajar.ps1 -Datos` y `levantar` (solo borra los volúmenes de `supervision-azure`, `supervision-google` y `supervision-aws`).
+- `humo-despliegue.mjs --completa` deja creada una obra «Humo 601 …» con su planilla aprobada y su cobro (y un correo en Mailpit) cada vez que corre.
+
+### Cuánto ocupa y cuánto tarda
+
+Medido el 05/11/2026 en la laptop del equipo (Docker Desktop con WSL 2 y 8 GB para Docker), con los tres grupos sanos, los datos de demostración cargados y después de `humo-despliegue.mjs --completa` (`docker stats --no-stream` y `docker system df -v`), sin Ollama y con el entorno de desarrollo detenido:
+
+| Grupo | Contenedores | RAM | Los que más usan |
+|---|---|---|---|
+| `azure` | 11 | ~2,7 GB | Keycloak 874 MB, n8n 580 MB, Obras 503 MB, RabbitMQ 148 MB, Finanzas (API 137 MB y trabajos 107 MB), PostgreSQL 126 MB, gateway 116 MB |
+| `google` | 6 | ~1,0 GB | `ia-api` 331 MB, MongoDB 308 MB, `ia-worker` 256 MB, Materiales 76 MB, PostgreSQL de reportes 35 MB |
+| `aws` | 4 | ~0,4 GB | DynamoDB Local 175 MB, MinIO 112 MB, Sincronización 75 MB |
+| **Total** | **21** | **~4,1 GB** de los 7,6 GB de Docker | |
+
+| Disco | Tamaño |
+|---|---|
+| Imágenes propias (6 servicios) | ~1,9 GB (Obras 296 MB, Finanzas 308 MB, Materiales 229 MB, Sincronización 211 MB, gateway 205 MB, IA 683 MB) |
+| Imágenes de apoyo | ~4,5 GB, casi todas compartidas con el desarrollo (n8n 1,06 GB, MongoDB 943 MB, DynamoDB Local 512 MB, Keycloak 474 MB, `postgres:17` 454 MB, `aws-cli` 458 MB, RabbitMQ 283 MB); nuevas solo Caddy (66 MB) y MinIO (159 MB) |
+| Volúmenes de datos (10) | ~360 MB con los datos de demostración: MongoDB 212 MB, PostgreSQL de azure 88 MB, reportes 48 MB, n8n 7 MB y el resto menos de 1 MB |
+| Capas de los contenedores | ~225 MB (Keycloak 176 MB al construir su configuración, n8n 47 MB) |
+| Frontends publicados (`produccion-local/sitios/`) | 13 MB |
+
+| Paso (con las imágenes ya construidas y los frontends ya compilados) | Tiempo |
+|---|---|
+| Certificados | 2 s |
+| Publicar los 5 frontends (`-SinCompilar`) | 27 s |
+| Grupo `azure` hasta quedar sano (desde volúmenes vacíos: Keycloak importa el realm) | 125 s |
+| Grupo `google` | 53 s |
+| Grupo `aws` | 19 s |
+| Datos de demostración | 42 s |
+| Carga inicial de reportes | 10 s |
+| **Total** | **~4 min 40 s** |
+
+Construir las 6 imágenes desde cero y compilar los frontends no está en la tabla: depende de la red y de la caché de Docker y de npm. La saga de `--completa` (aprobar la planilla) terminó en 4 s, y la nota de cobro llegó a Mailpit dentro de la espera de la prueba (hasta 90 s).
 
 ### Cómo funciona
 
