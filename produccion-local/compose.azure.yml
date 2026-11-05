@@ -236,10 +236,16 @@ services:
   # (como «Finanzas en segundo plano» de la 602). Si uno de los tres termina, el contenedor se reinicia entero.
   finanzas-trabajos:
     <<: *finanzas
+    # La imagen es Alpine (sh de busybox, sin bash): vigila los tres procesos y termina si uno se cae
     command:
-      - bash
+      - sh
       - -c
-      - php artisan mensajeria:consumir & php artisan mensajeria:publicar & php artisan schedule:work & wait -n; exit $$?
+      - >-
+        php artisan mensajeria:consumir & c=$$!;
+        php artisan mensajeria:publicar & p=$$!;
+        php artisan schedule:work & s=$$!;
+        while kill -0 $$c 2>/dev/null && kill -0 $$p 2>/dev/null && kill -0 $$s 2>/dev/null; do sleep 5; done;
+        echo "un proceso de finanzas-trabajos terminó; se reinicia el contenedor" >&2; exit 1
     healthcheck:
       disable: true
     depends_on:
