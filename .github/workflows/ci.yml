@@ -1,0 +1,95 @@
+# 601 · CI de infra: en cada pull request hacia develop o main (y en cada push a main) valida lo que se monta en
+# los contenedores, sin construir imágenes ni levantar nada: los docker compose de desarrollo (todos los perfiles,
+# también con el de la GPU) y de la producción local (los tres grupos), el realm de Keycloak, las definiciones de
+# RabbitMQ, los flujos y credenciales de n8n y la sintaxis de los scripts. No usa secretos: los valores vacíos de los
+# .env.example se rellenan con un valor de prueba solo para interpolar.
+name: ci
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prueba:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Docker Compose de desarrollo (todos los perfiles)
+        run: |
+          sed -E 's/^([A-Z_0-9]+)=$/\1=valor-de-prueba/' .env.example > .env
+          docker compose --profile '*' config -q
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile '*' config -q
+
+      - name: Docker Compose de la producción local (azure, google y aws)
+        run: |
+          sed -E 's/^([A-Z_0-9]+)=$/\1=valor-de-prueba/' produccion-local/.env.example > produccion-local/.env
+          for grupo in azure google aws; do
+            echo "compose.$grupo.yml"
+            docker compose -f "produccion-local/compose.$grupo.yml" --env-file produccion-local/.env --profile '*' config -q
+          done
+
+      - name: Realm, definiciones de RabbitMQ y flujos de n8n bien formados
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, readdirSync } from "node:fs";
+            const leer = (ruta) => {
+              try { return JSON.parse(readFileSync(ruta, "utf8")); }
+              catch (error) { console.error(`${ruta}: ${error.message}`); process.exit(1); }
+            };
+            const exigir = (ok, mensaje) => { if (!ok) { console.error(mensaje); process.exit(1); } };
+
+            const realm = leer("keycloak/realm-supervision.json");
+            exigir(realm.realm === "supervision", "realm: el nombre no es supervision");
+            const clientes = realm.clients.map((c) => c.clientId);
+            for (const id of ["erp", "portal", "app-obra", "gateway", "ia-reportes", "ia-agentes", "n8n"]) {
+              exigir(clientes.includes(id), `realm: falta el cliente ${id}`);
+            }
+            exigir(realm.users.filter((u) => !u.serviceAccountClientId).length === 9, "realm: no son 9 usuarios de prueba");
+            console.log(`realm: ${clientes.length} clientes, ${realm.users.length} usuarios`);
+
+            const definiciones = leer("rabbitmq/definiciones.json");
+            const colas = definiciones.queues.map((c) => c.name);
+            for (const cola of ["obras", "materiales", "finanzas", "ia", "plataforma.fallidos", "n8n.cobro-emitido", "n8n.cobro-pagado", "n8n.stock-bajo", "n8n.planilla-presentada"]) {
+              exigir(colas.includes(cola), `definiciones: falta la cola ${cola}`);
+            }
+            for (const enlace of definiciones.bindings) {
+              exigir(colas.includes(enlace.destination), `definiciones: enlace a una cola que no existe (${enlace.destination})`);
+            }
+            exigir(!definiciones.users?.length, "definiciones: no deben traer usuarios (sus contraseñas vienen de .env)");
+            console.log(`definiciones: ${colas.length} colas, ${definiciones.bindings.length} enlaces`);
+
+            const ids = new Set();
+            for (const archivo of readdirSync("n8n/flujos").filter((a) => a.endsWith(".json"))) {
+              const flujo = leer(`n8n/flujos/${archivo}`);
+              exigir(flujo.id && Array.isArray(flujo.nodes) && flujo.nodes.length && flujo.connections, `n8n/flujos/${archivo}: sin id, nodos o conexiones`);
+              exigir(!ids.has(flujo.id), `n8n/flujos/${archivo}: id repetido ${flujo.id}`);
+              ids.add(flujo.id);
+            }
+            console.log(`n8n: ${ids.size} flujos`);
+            for (const archivo of readdirSync("n8n/credenciales").filter((a) => a.endsWith(".json"))) {
+              const credencial = leer(`n8n/credenciales/${archivo}`);
+              exigir(credencial.id && credencial.type, `n8n/credenciales/${archivo}: sin id o tipo`);
+              for (const campo of ["clientSecret", "password", "privateKey"]) {
+                exigir(!credencial.data?.[campo], `n8n/credenciales/${archivo}: ${campo} debe ir vacío (secreto)`);
+              }
+            }
+          '
+
+      - name: Sintaxis de los scripts de Bash y de Node
+        run: |
+          for archivo in $(git ls-files '*.sh'); do bash -n "$archivo"; done
+          for archivo in $(git ls-files '*.mjs'); do node --check "$archivo"; done
