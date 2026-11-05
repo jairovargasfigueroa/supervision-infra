@@ -205,7 +205,9 @@ ejecutar() {
 # Líneas de resumen que imprimió un servicio (las que dicen «resumen» o «D = AAAA-MM-DD»), sin colores de consola
 anotar_resumen() {
   local nombre="$1" lineas
-  lineas="$(sed -e $'s/\e\\[[0-9;]*m//g' -e 's/^[[:space:]]*//' "$TEMPORAL/$nombre.log" | grep -iE 'resumen|(^|[^[:alnum:]])D[[:space:]]*=[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' | grep -v '^>')"
+  # Una línea en JSON (la imagen de Obras con el perfil prod, 601) se lee por su «message»
+  lineas="$(sed -e $'s/\e\\[[0-9;]*m//g' -e 's/^[[:space:]]*//' \
+    -E -e '/^\{.*"message":"/{s/^\{.*"message":"(([^"\\]|\\.)*)".*/\1/;s/\\"/"/g;}' "$TEMPORAL/$nombre.log" | grep -iE 'resumen|(^|[^[:alnum:]])D[[:space:]]*=[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' | grep -v '^>')"
   [ -n "$lineas" ] || lineas='(el comando no imprimió una línea de resumen; revisa su salida arriba)'
   while IFS= read -r linea; do RESUMEN+="$(printf '%-11s %s' "$nombre:" "$linea")"$'\n'; done <<< "$lineas"
 }

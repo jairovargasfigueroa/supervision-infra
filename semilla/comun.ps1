@@ -189,9 +189,16 @@ function Ejecutar([string]$Nombre, [string]$Carpeta, [string]$Programa, [string[
     return $salida
 }
 
+# Una línea de registro en JSON (la imagen de Obras con el perfil prod, 601) se lee por su «message»; el resto, tal cual
+function Mensaje-Registro([string]$Linea) {
+    if ($Linea -notmatch '^\{.*"message"') { return $Linea }
+    try { $mensaje = ($Linea | ConvertFrom-Json).message } catch { return $Linea }
+    if ($mensaje) { return [string]$mensaje } else { return $Linea }
+}
+
 # Líneas de resumen que imprime cada servicio (las que dicen «resumen» o «D = AAAA-MM-DD»), sin colores de consola
 function Lineas-Resumen($Salida) {
-    $lineas = @($Salida | ForEach-Object { ($_ -replace "$([char]27)\[[0-9;]*m", '').Trim() } | Where-Object { $_ -match '(?i)resumen|\bD\s*=\s*\d{4}-\d{2}-\d{2}' -and $_ -notmatch '^>' })
+    $lineas = @($Salida | ForEach-Object { Mensaje-Registro (($_ -replace "$([char]27)\[[0-9;]*m", '').Trim()) } | Where-Object { $_ -match '(?i)resumen|\bD\s*=\s*\d{4}-\d{2}-\d{2}' -and $_ -notmatch '^>' })
     if ($lineas.Count -eq 0) { return @('(el comando no imprimió una línea de resumen; revisa su salida arriba)') }
     return $lineas
 }
