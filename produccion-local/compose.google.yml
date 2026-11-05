@@ -125,10 +125,11 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # API del servicio de IA (también /mcp): aplica las migraciones de reportes_db antes de atender
+  # API del servicio de IA (también /mcp): el punto de entrada de la imagen aplica las migraciones de reportes_db
+  # antes de atender (solo con ia-api)
   ia-api:
     <<: *ia
-    command: ["sh", "-c", "alembic upgrade head && exec ia-api"]
+    command: ["ia-api"]
     environment:
       <<: *ia-entorno
     depends_on:
@@ -138,12 +139,6 @@ services:
         condition: service_completed_successfully
       caddy:
         condition: service_started
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/salud', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
     restart: unless-stopped
 
   # Consumidor de la cola ia, tareas programadas y host de los agentes (el único con el secreto de ia-agentes)
@@ -153,8 +148,6 @@ services:
     environment:
       <<: *ia-entorno
       IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET:?falta IA_AGENTES_CLIENT_SECRET en .env}
-    healthcheck:
-      disable: true
     depends_on:
       ia-api:
         condition: service_healthy
@@ -169,8 +162,6 @@ services:
     environment:
       <<: *ia-entorno
       IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
-    healthcheck:
-      disable: true
     depends_on:
       postgres-reportes:
         condition: service_healthy
