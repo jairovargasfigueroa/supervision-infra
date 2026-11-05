@@ -121,6 +121,13 @@ const manifiesto = await pedir(`${ERP}/federation.manifest.json`);
 comprobar('ERP: federation.manifest.json con los tres microfrontends',
   manifiesto.json && ['mf-obras', 'mf-materiales', 'mf-supervision'].every((mf) => String(manifiesto.json[mf] ?? '').endsWith('/remoteEntry.json')),
   manifiesto.json ? JSON.stringify(manifiesto.json) : resumen(manifiesto));
+// 104: el service worker guarda los remotos solo si su grupo «remotos» tiene los orígenes publicados
+const ngsw = await pedir(`${ERP}/ngsw.json`);
+const patronesRemotos = ngsw.json?.assetGroups?.find((grupo) => grupo.name === 'remotos')?.patterns ?? [];
+comprobar('ERP: ngsw.json guarda los microfrontends publicados (sin localhost)',
+  Object.values(manifiesto.json ?? {}).length === 3 &&
+    Object.values(manifiesto.json).every((url) => patronesRemotos.some((patron) => new RegExp(`^${patron}$`).test(String(url)))),
+  ngsw.json ? JSON.stringify(patronesRemotos) : resumen(ngsw));
 const configPortal = await pedir(`${PORTAL}/configuracion.json`);
 comprobar('Portal: configuracion.json con las direcciones del entorno',
   configPortal.json?.keycloakUrl === KEYCLOAK && sinBarra(configPortal.json?.obrasUrl ?? '') === OBRAS && sinBarra(configPortal.json?.erpUrl ?? '') === ERP,

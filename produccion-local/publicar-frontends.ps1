@@ -71,6 +71,12 @@ foreach ($frontend in $frontends) {
         Escribir-Plantilla $plantilla (Join-Path $sitio $archivo) $frontend.Variables
         Write-Host "ok       $archivo escrito con las direcciones de produccion-local/.env"
     }
+    if ($frontend.Nombre -eq 'erp-shell') {
+        # 104: el service worker del shell guarda los remotos de estas direcciones (la compilación trae las de desarrollo)
+        & node (Join-Path $Dir 'ajustar-ngsw.mjs') (Join-Path $sitio 'ngsw.json') $envPl['MF_OBRAS_URL'] $envPl['MF_MATERIALES_URL'] $envPl['MF_SUPERVISION_URL']
+        if ($LASTEXITCODE -ne 0) { Detener 'No se pudo ajustar ngsw.json del shell (salida de arriba).' }
+        Write-Host 'ok       ngsw.json con las direcciones de los microfrontends'
+    }
 }
 Write-Host ''
 Write-Host 'Frontends publicados. Caddy los sirve sin reiniciar (azure: https://erp.azure.localhost:8443 y https://portal.azure.localhost:8443).'

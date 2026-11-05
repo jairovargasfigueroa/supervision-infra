@@ -75,6 +75,12 @@ for linea in "${FRONTENDS[@]}"; do
     escribir_plantilla "$plantilla" "$sitio/$archivo" "$variables"
     echo "ok       $archivo escrito con las direcciones de produccion-local/.env"
   done
+  if [ "$nombre" = erp-shell ]; then
+    # 104: el service worker del shell guarda los remotos de estas direcciones (la compilación trae las de desarrollo)
+    node "$DIR/ajustar-ngsw.mjs" "$sitio/ngsw.json" "$(env_valor MF_OBRAS_URL)" "$(env_valor MF_MATERIALES_URL)" \
+      "$(env_valor MF_SUPERVISION_URL)" || detener 'No se pudo ajustar ngsw.json del shell (salida de arriba).'
+    echo 'ok       ngsw.json con las direcciones de los microfrontends'
+  fi
 done
 echo
 echo 'Frontends publicados. Caddy los sirve sin reiniciar (azure: https://erp.azure.localhost:8443 y https://portal.azure.localhost:8443).'
