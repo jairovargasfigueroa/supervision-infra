@@ -203,9 +203,10 @@ function Ejecutar-S3([string[]]$Argumentos) {
     $ErrorActionPreference = 'Continue'
     try {
         # 601: en modo demostración, el s3-cli del grupo del S3 compatible (con su AWS_ENDPOINT_URL)
-        $compose = @('compose')
-        if ($Demo) { $compose = Argumentos-Compose $Compose['S3'] }
-        $salida = & docker @compose --profile herramientas run --rm --no-TTY s3-cli @Argumentos 2>&1 |
+        # (otro nombre que $Compose: en PowerShell las variables no distinguen mayúsculas)
+        $argumentosDocker = @('compose')
+        if ($Demo) { $argumentosDocker = Argumentos-Compose $script:Compose['S3'] }
+        $salida = & docker @argumentosDocker --profile herramientas run --rm --no-TTY s3-cli @Argumentos 2>&1 |
             ForEach-Object { Linea $_ } | Where-Object { $_ -notmatch '^\s*Container .*(Creat|Start|Stopp|Remov)' }
     } finally {
         $ErrorActionPreference = $anterior
