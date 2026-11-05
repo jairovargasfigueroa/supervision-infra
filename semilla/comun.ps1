@@ -265,7 +265,7 @@ function Vaciar-Atipicos {
 function Contar-Fotos([string]$Bucket) {
     $lista = Ejecutar-S3 @('s3', 'ls', "s3://$Bucket/fotos/", '--recursive')
     if ($LASTEXITCODE -ne 0) { Detener "No se pudo listar s3://$Bucket/fotos/:`n$($lista -join "`n")" }
-    return @($lista | Where-Object { $_ -match 'fotos/b0000000-0000-4000-8000-00000000000[1-3]/f1000000-[0-9a-f-]{28}\.jpg$' }).Count
+    return @($lista | Where-Object { $_ -match 'fotos/b0000000-0000-4000-8000-00000000000[1-3]/f1000000-[0-9a-f-]{27}\.jpg$' }).Count
 }
 
 function Verificar-Usuarios {

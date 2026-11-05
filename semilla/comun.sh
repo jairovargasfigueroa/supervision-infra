@@ -229,7 +229,7 @@ ejecutar_en_imagen() {
 contar_fotos() {
   local lista
   lista="$(ejecutar_s3 s3 ls "s3://$BUCKET/fotos/" --recursive)" || detener "No se pudo listar s3://$BUCKET/fotos/:"$'\n'"$lista"
-  printf '%s\n' "$lista" | grep -cE 'fotos/b0000000-0000-4000-8000-00000000000[1-3]/f1000000-[0-9a-f-]{28}\.jpg$'
+  printf '%s\n' "$lista" | grep -cE 'fotos/b0000000-0000-4000-8000-00000000000[1-3]/f1000000-[0-9a-f-]{27}\.jpg$'
 }
 
 # Pasos 2 a 6 de la sección 12: D, Keycloak, Obras → Finanzas → Materiales, fotos y resumen.
