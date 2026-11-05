@@ -1,0 +1,17 @@
+# 601 · Caddy del grupo «aws» (hace de AWS): HTTPS en el 10443 de la máquina con la CA local.
+# Publica Sincronización y el S3 compatible (MinIO). Direcciones: https://<pieza>.aws.localhost:10443
+{
+	https_port 10443
+	import /etc/caddy/global.caddy
+}
+
+import /etc/caddy/comun.caddy
+
+sincronizacion.aws.localhost {
+	import servicio sincronizacion:8084
+}
+
+# Las URL firmadas de S3 incluyen el Host en la firma: se reenvía tal cual (Caddy no lo cambia)
+s3.aws.localhost {
+	import servicio minio:9000
+}

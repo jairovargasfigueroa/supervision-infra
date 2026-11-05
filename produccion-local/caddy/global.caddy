@@ -1,0 +1,16 @@
+# 601 · Opciones globales comunes de los tres Caddy de la «producción local» (cada Caddyfile la importa dentro de su
+# bloque global, después de su https_port). Los certificados los firma la CA local compartida
+# (produccion-local/certificados, la genera certificados.ps1/.sh): Caddy crea su intermedia con esa raíz, así que el
+# navegador y los servicios solo tienen que aceptar ca.crt.
+auto_https disable_redirects
+local_certs
+skip_install_trust
+pki {
+	ca local {
+		name "Supervision produccion local"
+		root {
+			cert /certificados/ca.crt
+			key /certificados/ca.key
+		}
+	}
+}

@@ -191,6 +191,90 @@ En Git Bash antepón `MSYS_NO_PATHCONV=1` (si no, convierte `/lector-reportes.sq
 
 Versiones, variables de cada proyecto y orden para levantar todo: `docs/entorno-local.md` del repo `supervision-docs`. Detalle de este repo: `CLAUDE.md` y `docs/`.
 
+## Producción local: ensayo del despliegue (601)
+
+Levanta en la laptop la plataforma **como quedará en las nubes**: las imágenes de producción de los 6 servicios y los 5 frontends compilados, separados en tres grupos que hacen de las tres nubes (`azure`, `google` y `aws`, reparto de la 602). Cada grupo tiene su red; entre grupos solo se hablan por direcciones públicas con **HTTPS** (un Caddy por grupo con una CA local) y RabbitMQ con **TLS** (AMQPS). No toca el entorno de desarrollo: son los proyectos de Compose `supervision-azure`, `supervision-google` y `supervision-aws`, con sus propias redes, volúmenes y puertos.
+
+| Grupo | Puerto | Qué corre | Direcciones |
+|---|---|---|---|
+| `azure` | 8443 (y 5671 AMQPS) | PostgreSQL (`obras_db`, `finanzas_db`, `keycloak_db`, un usuario por base), RabbitMQ (TLS), Keycloak (`start`, `KC_HOSTNAME`), Obras, Finanzas (`finanzas-api` y `finanzas-trabajos`: consumidor, publicador y tareas programadas), gateway, n8n, Mailpit y Caddy, que además sirve los 5 frontends | `https://{keycloak,gateway,obras,finanzas,n8n,mailpit,rabbitmq,erp,mf-obras,mf-materiales,mf-supervision,portal}.azure.localhost:8443` |
+| `google` | 9443 | `ia-api`, `ia-worker` (e `ia-carga-inicial`, de una vez), PostgreSQL de reportes, MongoDB en *replica set*, Materiales y, con `-ConOllama`, Ollama | `https://ia.google.localhost:9443`, `https://materiales.google.localhost:9443` |
+| `aws` | 10443 | Sincronización, DynamoDB Local y MinIO (S3 compatible) | `https://sincronizacion.aws.localhost:10443`, `https://s3.aws.localhost:10443` |
+
+Los puertos se eligieron para no chocar con los de desarrollo (`docs/convenciones.md`). Las bases no se publican en la máquina: solo las ve su grupo.
+
+### Primera vez
+
+1. `Copy-Item produccion-local/.env.example produccion-local/.env` y completa los valores vacíos (contraseñas distintas de las de desarrollo; solo letras, números, `-` y `_`). `USUARIOS_PRUEBA_CLAVE` es la contraseña de los 9 usuarios de prueba en el ensayo (no `Prueba123!`); `N8N_PROPIETARIO_CLAVE_HASH`, como en desarrollo («Cobranza automática»).
+2. `./produccion-local/levantar.ps1` (en Bash, `./produccion-local/levantar.sh`). En orden: genera la CA local y el certificado de RabbitMQ (`certificados.ps1`, OpenSSL en un contenedor), **construye** las imágenes desde las carpetas de los proyectos (o, con `-DesdeGhcr`, descarga las publicadas con la etiqueta `main`), compila y publica los frontends (`publicar-frontends.ps1`), levanta `azure`, `google` y `aws` esperando a que cada uno esté sano, carga los **datos de demostración** (`semilla.ps1 -Entorno produccion-local/.env`, con `SEMILLA_DEMO=si`) y corre la **carga inicial** de la base de reportes.
+3. Abre `https://erp.azure.localhost:8443` y `https://portal.azure.localhost:8443` (usuarios de `docs/datos-prueba.md`, con `USUARIOS_PRUEBA_CLAVE`).
+4. `node pruebas/humo-despliegue.mjs --entorno produccion-local/.env [--completa]`.
+5. Al terminar, `./produccion-local/bajar.ps1` (libera la RAM y conserva los datos).
+
+Opciones de `levantar`: `-Grupo azure|google|aws` (solo ese grupo; si la laptop no alcanza para los tres, primero `azure`, el centro, y después los otros: los datos se cargan a mano cuando estén los tres), `-DesdeGhcr`, `-SinCompilar` (publica los frontends con la carpeta compilada que ya tienen), `-SinFrontends`, `-SinDatos` y `-ConOllama`. Para bajarlo: `./produccion-local/bajar.ps1 [-Grupo …]` (conserva los datos) o con `-Datos` (borra sus volúmenes; al levantar, Keycloak vuelve a importar el realm y las bases empiezan vacías).
+
+### Las veces siguientes
+
+- Antes de levantar, **detén el entorno de desarrollo** (`./scripts/bajar.ps1`) para dejarle la RAM: el ensayo solo ya usa unos 4 GB.
+- `./produccion-local/levantar.ps1 -SinCompilar` vuelve a subir los tres grupos con los datos que tenían. Construir las imágenes otra vez es rápido si no cambió el código (Docker reusa sus capas); `-SinCompilar` evita recompilar los 5 frontends. La semilla de demostración se vuelve a correr y no duplica nada (en el resumen, `insertados` en 0).
+- Para empezar de cero: `./produccion-local/bajar.ps1 -Datos` y `levantar` (solo borra los volúmenes de `supervision-azure`, `supervision-google` y `supervision-aws`).
+- `humo-despliegue.mjs --completa` deja creada una obra «Humo 601 …» con su planilla aprobada y su cobro (y un correo en Mailpit) cada vez que corre.
+
+### Cuánto ocupa y cuánto tarda
+
+Medido el 05/11/2026 en la laptop del equipo (Docker Desktop con WSL 2 y 8 GB para Docker), con los tres grupos sanos, los datos de demostración cargados y después de `humo-despliegue.mjs --completa` (`docker stats --no-stream` y `docker system df -v`), sin Ollama y con el entorno de desarrollo detenido:
+
+| Grupo | Contenedores | RAM | Los que más usan |
+|---|---|---|---|
+| `azure` | 11 | ~2,7 GB | Keycloak 874 MB, n8n 580 MB, Obras 503 MB, RabbitMQ 148 MB, Finanzas (API 137 MB y trabajos 107 MB), PostgreSQL 126 MB, gateway 116 MB |
+| `google` | 6 | ~1,0 GB | `ia-api` 331 MB, MongoDB 308 MB, `ia-worker` 256 MB, Materiales 76 MB, PostgreSQL de reportes 35 MB |
+| `aws` | 4 | ~0,4 GB | DynamoDB Local 175 MB, MinIO 112 MB, Sincronización 75 MB |
+| **Total** | **21** | **~4,1 GB** de los 7,6 GB de Docker | |
+
+| Disco | Tamaño |
+|---|---|
+| Imágenes propias (6 servicios) | ~1,9 GB (Obras 296 MB, Finanzas 308 MB, Materiales 229 MB, Sincronización 211 MB, gateway 205 MB, IA 683 MB) |
+| Imágenes de apoyo | ~4,5 GB, casi todas compartidas con el desarrollo (n8n 1,06 GB, MongoDB 943 MB, DynamoDB Local 512 MB, Keycloak 474 MB, `postgres:17` 454 MB, `aws-cli` 458 MB, RabbitMQ 283 MB); nuevas solo Caddy (66 MB) y MinIO (159 MB) |
+| Volúmenes de datos (10) | ~360 MB con los datos de demostración: MongoDB 212 MB, PostgreSQL de azure 88 MB, reportes 48 MB, n8n 7 MB y el resto menos de 1 MB |
+| Capas de los contenedores | ~225 MB (Keycloak 176 MB al construir su configuración, n8n 47 MB) |
+| Frontends publicados (`produccion-local/sitios/`) | 13 MB |
+
+| Paso (con las imágenes ya construidas y los frontends ya compilados) | Tiempo |
+|---|---|
+| Certificados | 2 s |
+| Publicar los 5 frontends (`-SinCompilar`) | 27 s |
+| Grupo `azure` hasta quedar sano (desde volúmenes vacíos: Keycloak importa el realm) | 125 s |
+| Grupo `google` | 53 s |
+| Grupo `aws` | 19 s |
+| Datos de demostración | 42 s |
+| Carga inicial de reportes | 10 s |
+| **Total** | **~4 min 40 s** |
+
+Construir las 6 imágenes desde cero y compilar los frontends no está en la tabla: depende de la red y de la caché de Docker y de npm. La saga de `--completa` (aprobar la planilla) terminó en 4 s, y la nota de cobro llegó a Mailpit dentro de la espera de la prueba (hasta 90 s).
+
+### Cómo funciona
+
+- **Nombres:** `*.localhost` lo resuelven a la máquina el navegador y curl, sin tocar el archivo `hosts`. Dentro de los contenedores esos nombres apuntan a la máquina con `extra_hosts` (`host-gateway`), así las llamadas entre grupos salen y entran por el Caddy del grupo de destino, con HTTPS, como entre nubes. Node en Windows no resuelve `*.localhost`: los scripts de la máquina (`humo-despliegue.mjs`, `semilla/plataforma.mjs`) usan `pruebas/red-local.mjs`.
+- **Keycloak** corre con `KC_HOSTNAME=KEYCLOAK_URL`: el emisor de los tokens es siempre `https://keycloak.azure.localhost:8443/realms/supervision`, el que validan todos los servicios. Importa el realm de `keycloak/realm-supervision.json` con las direcciones del ERP y el portal, la clave de los usuarios de prueba y los secretos de este `.env` (solo si el realm no existe: para cambiarlos, `bajar -Grupo azure -Datos`).
+- **CA local:** `produccion-local/certificados/` (fuera del repositorio): `ca.crt` y `ca.key` (los tres Caddy firman con ella sus certificados), `rabbitmq.crt`/`.key` (AMQPS) y `ca.p12` (truststore de Java). Cada imagen la acepta por variable, sin cambiar código: Java `JAVA_TOOL_OPTIONS` con `ca.p12`, Node `NODE_EXTRA_CA_CERTS`, IA `IA_CA_EXTRA` y PHP `curl.cainfo` y `openssl.cafile` (`finanzas/ca-local.ini`). En la nube no hace falta (certificados públicos).
+- **Navegador:** la primera vez avisa que el certificado no es de confianza en cada dirección (acepta el aviso en `erp`, `portal`, `keycloak` y `gateway`, y también abre una vez `https://mf-obras.azure.localhost:8443/remoteEntry.json`, el de `mf-materiales` y el de `mf-supervision`, para que el shell pueda cargarlos). Para no ver los avisos, instala `ca.crt` como «Entidad de certificación raíz de confianza» del usuario (`certmgr.msc` o doble clic en el archivo; opcional) y quítala al terminar el ensayo.
+- **curl en Windows:** agrega `--ssl-no-revoke` (Schannel no puede comprobar la revocación de una CA local): `curl --cacert produccion-local/certificados/ca.crt --ssl-no-revoke https://keycloak.azure.localhost:8443/realms/supervision`.
+- **Finanzas y libcurl:** PHP pide el JWKS de Keycloak con libcurl, que resuelve `*.localhost` siempre a la propia máquina (RFC 6761) e ignora `extra_hosts`. Solo en el ensayo, `finanzas-reenvio` (el reenviador de n8n, en la red de `finanzas-api`) lleva `127.0.0.1:8443` al Caddy de azure.
+- **RabbitMQ:** los servicios de los tres grupos entran por `rabbitmq.azure.localhost:5671` con TLS y su usuario (Obras `OBRAS_RABBITMQ_SSL`, Finanzas `RABBITMQ_SSL`, Materiales e IA con `amqps://`); n8n, en el mismo grupo, por la red interna (5672), como en la VM de la 602. Mismas definiciones y usuarios que en desarrollo (`rabbitmq/`).
+- **Datos de demostración:** la semilla corre cada servicio con **su imagen** en su grupo (`docker compose run --rm` con `SEMILLA_DEMO=si`); las fotos van a MinIO con el `s3-cli` del grupo aws. Nunca se vacía nada: para empezar de cero, `bajar -Datos`.
+- **Mover un servicio de grupo** (criterio 19): se mueve su bloque al otro `compose.<grupo>.yml` (con su `extra_hosts` y su ruta en el Caddyfile del grupo) y se cambia su dirección en `.env` (y su `SEMILLA_COMPOSE_…` si carga datos). Ninguna imagen cambia.
+- **Ollama:** con `-ConOllama`, el grupo google levanta su Ollama con el volumen del modelo de desarrollo (`supervision_datos-ollama`, externo: `bajar -Datos` no lo borra). Con 16 GB de RAM conviene sin él (`IA_LLM_PROVEEDOR=anthropic` o reportes y agentes sin modelo).
+- **Frontends:** `publicar-frontends.ps1` compila cada uno (`npm run build`), copia su carpeta compilada a `produccion-local/sitios/<frontend>/` (fuera del repositorio; Caddy la sirve sin reiniciar) y escribe `configuracion.json` (shell y portal) y `federation.manifest.json` (shell) desde sus plantillas con las direcciones de `.env`. Reglas de Caddy (`caddy/comun.caddy`): SPA (si no existe el archivo, `index.html`), CORS para el origen del shell en `remoteEntry.json` y los `.js` de los microfrontends, y sin caché en `index.html`, `configuracion.json`, `federation.manifest.json`, `ngsw.json` y `ngsw-worker.js`. **Ojo:** compilar `mf-materiales` o `mf-supervision` reescribe su `dist/`, que también usa su servidor de desarrollo: si está corriendo, detenlo antes o usa `-SinCompilar`.
+
+### Prueba de humo del despliegue
+
+```powershell
+node pruebas/humo-despliegue.mjs --entorno produccion-local/.env              # en la 602, el archivo de la nube
+node pruebas/humo-despliegue.mjs --entorno produccion-local/.env --completa   # además, una planilla de punta a punta
+```
+
+Lee las direcciones (y los secretos de los clientes de servicio, la clave de los usuarios de prueba y el administrador de RabbitMQ) del archivo de `--entorno`; con `CA_LOCAL` acepta la CA local y resuelve `*.localhost` (`pruebas/red-local.mjs`). Comprueba, una línea por comprobación: `GET /salud` de los 6 servicios; la página inicial del ERP y del portal, sus `configuracion.json` (con las direcciones del entorno), el `federation.manifest.json` del shell y el `remoteEntry.json` de cada microfrontend con CORS para el shell; Keycloak (emisor, el ERP como origen permitido, tokens de gerente1 por el ERP y de cliente1 por el portal, y de los clientes `gateway`, `ia-reportes`, `ia-agentes` y `n8n` con el emisor esperado); el gateway (`{ salud }` sin token y `obras` y `materiales` con el token del gerente); `POST /mcp` de Obras, Materiales, Finanzas e IA sin token → `401`; RabbitMQ (saludo AMQP por TLS con el certificado verificado, las colas de la plataforma y de n8n, un consumidor en `obras`, `materiales`, `finanzas` e `ia` y esos usuarios conectados con TLS); n8n (listo y con los flujos de `n8n.cobro-emitido`, `n8n.cobro-pagado` y `n8n.planilla-presentada` escuchando) y Mailpit. Con `--completa`, como `pruebas/saga.mjs`: registra la obra «Humo 601 …», residente1 presenta la planilla del mes, cliente1 la aprueba por Obras (la saga pasa por Finanzas y por Materiales, en otro grupo) y espera el cobro y la nota de cobro en Mailpit (hasta 90 s). Termina con un resumen y código 1 si algo falla. `--completa` deja esa obra creada: solo en un entorno de prueba.
+
 ## DynamoDB Local (101)
 
 Base del servicio de Sincronización (`services/sincronizacion`), con `-sharedDb` y el volumen `datos-dynamodb` (los datos quedan al reiniciar; `./scripts/reiniciar-datos.ps1` los borra). Para levantar solo esta pieza: `docker compose up -d dynamodb`. Las tablas (`operacion_procesada` y `estado_dispositivo`) las crea Sincronización al iniciar con `DYNAMODB_CREAR_TABLAS=true`.
@@ -247,6 +331,14 @@ $env:SEMILLA_FECHA = '2026-10-28'; ./semilla/semilla.ps1   # con una fecha fija
 En Linux y macOS: `./semilla/semilla.sh` (o `SEMILLA_FECHA=2026-10-28 ./semilla/semilla.sh`).
 
 Hace, en orden: guardas (`SEMILLA_PERMITIDA=si`, bucket `supervision-dev-…`), comprueba Node, PHP, las carpetas de los proyectos y que PostgreSQL, MongoDB, Keycloak y el bucket responden; calcula **una sola fecha D** y la pasa a todos en `SEMILLA_FECHA`; comprueba que los 9 usuarios de Keycloak tienen su `id` fijo; carga **Obras → Finanzas → Materiales** (cada uno con su propio comando, ver `docs/contratos.md`), sube las fotos de `semilla/fotos/` al bucket (`fotos/{obraId}/{fotoId}.jpg`) y muestra un **resumen** con D y los conteos de cada servicio. Si algo falla, se detiene con un mensaje y no sigue con los demás. La carga **no publica eventos** y es **idempotente**: correrla de nuevo no duplica nada y no pisa lo que cambiaste (por ejemplo, una planilla aprobada sigue aprobada).
+
+### Datos de demostración fuera de desarrollo (601)
+
+```powershell
+./semilla/semilla.ps1 -Entorno produccion-local/.env      # en Bash: ./semilla/semilla.sh --entorno produccion-local/.env
+```
+
+Lee ese archivo en lugar de `infra/.env`. Con `SEMILLA_DEMO=si` en él (el `.env.example` de `produccion-local` lo trae) carga los mismos datos aunque los servicios estén en modo producción y las bases no sean locales, sin duplicar ni pisar nada, y **nunca vacía** (`recargar` se niega con `SEMILLA_DEMO=si`). Cada servicio carga con **su imagen de producción** en el grupo donde corre (`SEMILLA_COMPOSE_OBRAS`, `SEMILLA_COMPOSE_FINANZAS` y `SEMILLA_COMPOSE_MATERIALES`), así que no hacen falta PHP ni las carpetas de los proyectos, y las fotos van al S3 configurado con el `s3-cli` de su grupo (`SEMILLA_COMPOSE_S3`; en la producción local, MinIO). Comprueba los usuarios de Keycloak en `KEYCLOAK_URL` de ese archivo. Lo usa `produccion-local/levantar` al terminar.
 
 ### Recargar (antes de cada demostración)
 

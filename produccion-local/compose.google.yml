@@ -1,0 +1,213 @@
+# 601 · «Producción local», grupo google (hace de Google Cloud; reparto de la 602). Variables: .env de esta carpeta.
+# Servicio de IA (ia-api, ia-worker e ia-carga-inicial de la misma imagen), su PostgreSQL de reportes, MongoDB en
+# replica set (materiales_db e ia_db), Materiales y, con el perfil ollama, el modelo de lenguaje local. Habla con los
+# otros grupos solo por sus direcciones públicas (HTTPS por Caddy) y RabbitMQ por AMQPS. README, «Producción local».
+name: supervision-google
+
+x-nombres-publicos: &nombres-publicos
+  - "keycloak.azure.localhost:host-gateway"
+  - "rabbitmq.azure.localhost:host-gateway"
+  - "gateway.azure.localhost:host-gateway"
+  - "obras.azure.localhost:host-gateway"
+  - "finanzas.azure.localhost:host-gateway"
+  - "materiales.google.localhost:host-gateway"
+  - "ia.google.localhost:host-gateway"
+  - "sincronizacion.aws.localhost:host-gateway"
+  - "s3.aws.localhost:host-gateway"
+
+# Servicio de IA: una imagen, tres procesos (cambia el comando). La CA local entra por IA_CA_EXTRA.
+x-ia: &ia
+  build: ${IA_DIR:-../../services/ia}
+  image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-ms-ia:${IMAGEN_ETIQUETA:-local}
+  extra_hosts: *nombres-publicos
+  volumes:
+    - ./certificados:/certificados:ro
+
+x-ia-entorno: &ia-entorno
+  IA_ENTORNO: produccion
+  IA_PUERTO: "8085"
+  IA_REPORTES_DB_URL: postgresql+psycopg://ia:${POSTGRES_IA_CLAVE:?falta POSTGRES_IA_CLAVE en .env}@postgres-reportes:5432/reportes_db
+  IA_REPORTES_DB_URL_LECTURA: postgresql+psycopg://ia_reportes_lector:${POSTGRES_IA_LECTOR_CLAVE:?falta POSTGRES_IA_LECTOR_CLAVE en .env}@postgres-reportes:5432/reportes_db
+  IA_MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+  IA_MONGO_DB: ia_db
+  IA_RABBITMQ_URL: amqps://ia:${RABBITMQ_IA_CLAVE:?falta RABBITMQ_IA_CLAVE en .env}@${RABBITMQ_HOST}:${RABBITMQ_PUERTO_TLS}/
+  IA_KEYCLOAK_ISSUER: ${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}
+  IA_AUDIENCIA: plataforma-api
+  IA_ZONA_HORARIA: America/La_Paz
+  IA_CA_EXTRA: /certificados/ca.crt
+  IA_LLM_PROVEEDOR: ${IA_LLM_PROVEEDOR:-ollama}
+  IA_LLM_MODELO: ${IA_LLM_MODELO:-}
+  IA_OLLAMA_URL: ${IA_OLLAMA_URL:-http://ollama:11434}
+  IA_ANTHROPIC_API_KEY: ${IA_ANTHROPIC_API_KEY:-}
+  IA_OBRAS_URL: ${OBRAS_URL}
+  IA_MATERIALES_URL: ${MATERIALES_URL}
+  IA_FINANZAS_URL: ${FINANZAS_URL}
+  IA_REPORTES_CLIENT_ID: ia-reportes
+  IA_REPORTES_CLIENT_SECRET: ""
+  IA_AGENTES_CLIENT_ID: ia-agentes
+  IA_AGENTES_CLIENT_SECRET: ""
+  IA_OBRAS_MCP_URL: ${OBRAS_URL}/mcp
+  IA_MATERIALES_MCP_URL: ${MATERIALES_URL}/mcp
+  IA_FINANZAS_MCP_URL: ${FINANZAS_URL}/mcp
+  IA_PROPIO_MCP_URL: http://ia-api:8085/mcp
+  # El SDK de MCP responde 421 a un Host que no está en la lista: la red interna y la dirección pública (por Caddy)
+  IA_MCP_HOSTS_PERMITIDOS: ia-api:8085,localhost:8085,127.0.0.1:8085,ia.google.localhost:9443
+
+services:
+  # PostgreSQL de reportes (en la 602, contenedor en vm-ia): usuario ia, dueño de reportes_db, y el rol de solo lectura
+  # ia_reportes_lector, con los mismos scripts que desarrollo (../postgres). Sin puerto en la máquina.
+  postgres-reportes:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_REPORTES_CLAVE:?falta POSTGRES_REPORTES_CLAVE en .env}
+      POSTGRES_IA_CLAVE: ${POSTGRES_IA_CLAVE}
+      POSTGRES_IA_LECTOR_CLAVE: ${POSTGRES_IA_LECTOR_CLAVE}
+    volumes:
+      - ../postgres/init-reportes.sh:/docker-entrypoint-initdb.d/01-reportes.sh:ro
+      - ../postgres/lector-reportes.sql:/lector-reportes.sql:ro
+      - datos-postgres-reportes:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d reportes_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  # MongoDB en replica set de un nodo anunciado como mongo:27017 (lo encuentran los contenedores del grupo; en la
+  # 602, MongoDB Atlas). Sin puerto en la máquina.
+  mongo:
+    image: mongo:8.0
+    hostname: mongo
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - datos-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  mongo-init:
+    image: mongo:8.0
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./mongo/iniciar-replica.js:/iniciar-replica.js:ro
+    command: ["mongosh", "--quiet", "mongodb://mongo:27017/?directConnection=true", "/iniciar-replica.js"]
+    restart: "no"
+
+  materiales:
+    build: ${MATERIALES_DIR:-../../services/materiales}
+    image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-ms-materiales:${IMAGEN_ETIQUETA:-local}
+    extra_hosts: *nombres-publicos
+    environment:
+      NODE_ENV: production
+      PORT: "8082"
+      MONGODB_URI: mongodb://mongo:27017/materiales_db?replicaSet=rs0
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      AUDIENCIA: plataforma-api
+      RABBITMQ_URL: amqps://materiales:${RABBITMQ_MATERIALES_CLAVE:?falta RABBITMQ_MATERIALES_CLAVE en .env}@${RABBITMQ_HOST}:${RABBITMQ_PUERTO_TLS}
+      # Solo la llaman servicios y la app (no el navegador)
+      CORS_ORIGENES: ""
+      NODE_EXTRA_CA_CERTS: /certificados/ca.crt
+    volumes:
+      - ./certificados:/certificados:ro
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  # API del servicio de IA (también /mcp): el punto de entrada de la imagen aplica las migraciones de reportes_db
+  # antes de atender (solo con ia-api)
+  ia-api:
+    <<: *ia
+    command: ["ia-api"]
+    environment:
+      <<: *ia-entorno
+    depends_on:
+      postgres-reportes:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  # Consumidor de la cola ia, tareas programadas y host de los agentes (el único con el secreto de ia-agentes)
+  ia-worker:
+    <<: *ia
+    command: ["ia-worker"]
+    environment:
+      <<: *ia-entorno
+      IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET:?falta IA_AGENTES_CLIENT_SECRET en .env}
+    depends_on:
+      ia-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Carga inicial de reportes_db por REST (401): corre una vez y termina; el único con el secreto de ia-reportes.
+  # docker compose -f compose.google.yml run --rm ia-carga-inicial (levantar la corre después de la semilla)
+  ia-carga-inicial:
+    <<: *ia
+    profiles: ["carga"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-carga-inicial"]
+    environment:
+      <<: *ia-entorno
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
+    depends_on:
+      postgres-reportes:
+        condition: service_healthy
+    restart: "no"
+
+  # Modelo de lenguaje local (perfil ollama): reusa el volumen del modelo del entorno de desarrollo
+  # (supervision_datos-ollama: el modelo no se vuelve a descargar). Sin puerto en la máquina. Con 16 GB de RAM, mejor
+  # sin este perfil (diseño de la 601, «Recursos»): IA_LLM_PROVEEDOR=anthropic o el Ollama de desarrollo.
+  ollama:
+    image: ollama/ollama:0.40.4
+    profiles: ["ollama"]
+    environment:
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: q8_0
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - datos-ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  # HTTPS del grupo (9443) con la CA local
+  caddy:
+    image: caddy:2.11.7-alpine
+    ports:
+      - "9443:9443"
+    environment:
+      ERP_URL: ${ERP_URL}
+    volumes:
+      - ./caddy/Caddyfile.google:/etc/caddy/Caddyfile:ro
+      - ./caddy/global.caddy:/etc/caddy/global.caddy:ro
+      - ./caddy/comun.caddy:/etc/caddy/comun.caddy:ro
+      - ./certificados:/certificados:ro
+      - datos-caddy:/data
+    restart: unless-stopped
+
+volumes:
+  datos-postgres-reportes:
+  datos-mongo:
+  datos-caddy:
+  datos-ollama:
+    external: true
+    name: supervision_datos-ollama

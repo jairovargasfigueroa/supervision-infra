@@ -1,6 +1,7 @@
 // Ayudante de semilla.* y recargar.* (011) para lo que se habla por HTTP o TCP con la plataforma.
 // Lo usan los scripts de PowerShell y de Bash, así los dos hacen exactamente lo mismo. Node 24, sin dependencias.
-// Lee infra/.env. Uso: node semilla/plataforma.mjs <orden>
+// Lee infra/.env, o el archivo de la variable SEMILLA_ENTORNO (601: semilla -Entorno, por ejemplo produccion-local/.env;
+// con su CA local en CA_LOCAL y direcciones *.localhost). Uso: node semilla/plataforma.mjs <orden>
 //   fecha                  imprime D (SEMILLA_FECHA si viene definida y es válida; si no, hoy en America/La_Paz)
 //   comprobar [--rabbitmq] comprueba que PostgreSQL, MongoDB y Keycloak (y el panel de RabbitMQ) responden
 //   usuarios               comprueba que los 9 usuarios de prueba existen con su id fijo (sale con 3 si no)
@@ -9,15 +10,22 @@
 //   colas                  vacía las colas de la plataforma que existan (API del panel de RabbitMQ)
 import { readFileSync } from 'node:fs';
 import { connect } from 'node:net';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolverLocalhost, usarCa } from '../pruebas/red-local.mjs';
 
+const rutaEnv = process.env.SEMILLA_ENTORNO || fileURLToPath(new URL('../.env', import.meta.url));
 const env = Object.fromEntries(
-  readFileSync(fileURLToPath(new URL('../.env', import.meta.url)), 'utf8')
+  readFileSync(rutaEnv, 'utf8')
     .split(/\r?\n/)
     .filter((linea) => linea && !linea.startsWith('#') && linea.includes('='))
     .map((linea) => [linea.slice(0, linea.indexOf('=')).trim(), linea.slice(linea.indexOf('=') + 1).trim()]),
 );
 const valor = (nombre, porDefecto) => env[nombre] || porDefecto;
+// 601: modo demostración (las bases no se publican en la máquina: cada servicio carga con su imagen)
+const DEMO = env.SEMILLA_DEMO === 'si';
+if (env.CA_LOCAL) usarCa(resolve(dirname(rutaEnv), env.CA_LOCAL));
+resolverLocalhost();
 
 const KEYCLOAK = valor('KEYCLOAK_URL', 'http://localhost:8080');
 const RABBITMQ = valor('RABBITMQ_PANEL_URL', 'http://localhost:15672');
@@ -103,11 +111,12 @@ const ordenes = {
   },
 
   async comprobar(...opciones) {
-    const piezas = [
+    // En modo demostración las bases solo las ve su grupo: las comprueba cada servicio al cargar con su imagen
+    const piezas = DEMO ? [] : [
       [`PostgreSQL (${POSTGRES})`, () => puertoAbierto(POSTGRES)],
       [`MongoDB (${MONGO})`, () => puertoAbierto(MONGO)],
-      [`Keycloak (${KEYCLOAK}/realms/supervision)`, () => responde(`${KEYCLOAK}/realms/supervision/.well-known/openid-configuration`)],
     ];
+    piezas.push([`Keycloak (${KEYCLOAK}/realms/supervision)`, () => responde(`${KEYCLOAK}/realms/supervision/.well-known/openid-configuration`)]);
     if (opciones.includes('--rabbitmq')) {
       piezas.push([
         `panel de RabbitMQ (${RABBITMQ})`,
