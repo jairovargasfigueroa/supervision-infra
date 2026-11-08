@@ -24,7 +24,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 ## Despliegue (pasos 2 a 7 del «Orden»)
 
-- [ ] AWS, datos: `secretos` y `crear aws --datos`; comprobar el bucket, las tablas y que `obras-s3` puede subir a `fotos/` y no a otro prefijo
+- [x] AWS, datos: `secretos` y `crear aws --datos`; comprobar el bucket, las tablas y que `obras-s3` puede subir a `fotos/` y no a otro prefijo
 - [ ] Release `v1.0.0` en todos los repositorios; paquetes de GHCR públicos
 - [ ] Azure: `crear azure`, registros DNS (Jairo), `desplegar azure` y `humo-despliegue.mjs --entorno nube/.env --sin-google` en verde
 - [ ] AWS, máquina: `crear aws`, registro DNS (Jairo), `desplegar aws` y la prueba de humo con `--sin-google` en verde

@@ -11,14 +11,14 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 | Nube | Máquina | Qué corre | Nombres |
 |---|---|---|---|
 | Azure (`brazilsouth`) | `vm-plataforma`, B2s (4 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
-| AWS (`sa-east-1`) | `vm-sincronizacion`, t3.micro (1 GiB) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
+| AWS (`us-east-2`, la única región que permite la organización de la cuenta) | `vm-sincronizacion`, t3.micro (1 GiB) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
 | Google (`southamerica-east1`) | `vm-ia`, e2-medium (4 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
 
 ## Lo que hace falta en la PC
 
 - Node 24, Docker Desktop (para generar los hashes y para la semilla) y OpenSSH (viene con Windows 11).
 - CLI de Azure con sesión: `az login` (la cuenta de los créditos).
-- CLI de AWS con el usuario IAM `jairo-cli`: `aws configure`. Los *scripts* usan `AWS_REGION` de `nube/.env` (`sa-east-1`).
+- CLI de AWS con el usuario IAM `jairo-cli`: `aws configure`. Los *scripts* usan `AWS_REGION` de `nube/.env` (`us-east-2`: la organización de la cuenta bloquea las demás regiones).
 - CLI de Google (`gcloud`), cuando esté la cuenta.
 
 ## Primera vez (en este orden)
@@ -90,7 +90,7 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
 | Recurso | Precio | Se paga |
 |---|---|---|
 | Azure B2s en `brazilsouth` | $0,0672/h | encendida |
-| AWS t3.micro en `sa-east-1` | $0,0168/h | encendida |
+| AWS t3.micro en `us-east-2` | $0,0104/h | encendida |
 | IP fija (una por nube) | $0,005/h (~$3,60 al mes) | siempre |
 | Discos (32 GiB en Azure, 16 GiB en AWS) | unos pocos dólares al mes | siempre |
 

@@ -177,7 +177,7 @@ services:
       OBRAS_RABBITMQ_SSL: "true"
       # Amazon S3 (sin endpoint), con el usuario IAM obras-s3 (solo fotos/)
       OBRAS_S3_ENDPOINT: ""
-      OBRAS_S3_REGION: ${AWS_REGION:-sa-east-1}
+      OBRAS_S3_REGION: ${AWS_REGION:-us-east-2}
       OBRAS_S3_BUCKET: ${S3_BUCKET:?falta S3_BUCKET en .env}
       OBRAS_S3_ACCESS_KEY: ${OBRAS_S3_ACCESS_KEY:?falta OBRAS_S3_ACCESS_KEY en .env (crear aws --datos)}
       OBRAS_S3_SECRET_KEY: ${OBRAS_S3_SECRET_KEY:?falta OBRAS_S3_SECRET_KEY en .env (crear aws --datos)}

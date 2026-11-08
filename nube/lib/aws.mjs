@@ -32,7 +32,8 @@ const TABLAS = [
 ];
 const AMI_UBUNTU = '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id';
 
-const region = (env) => variable('AWS_REGION', env) || 'sa-east-1';
+// La organización de la cuenta solo permite us-east-2 (su SCP bloquea las demás regiones)
+const region = (env) => variable('AWS_REGION', env) || 'us-east-2';
 const aws = (env, argumentos, opciones = {}) => ejecutar('aws', [...argumentos, '--region', region(env)], opciones);
 const awsJson = (env, argumentos, opciones = {}) => aws(env, [...argumentos, '--output', 'json'], { ...opciones, json: true });
 const awsTexto = (env, argumentos, opciones = {}) => aws(env, [...argumentos, '--output', 'text'], opciones);

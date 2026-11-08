@@ -41,8 +41,9 @@ if ($DesdeGhcr) {
 
 if (($grupos -contains 'azure') -and -not $SinFrontends) {
     Paso 'Frontends compilados'
-    $argumentos = @()
-    if ($SinCompilar) { $argumentos += '-SinCompilar' }
+    # Con una tabla (no un arreglo): un '-SinCompilar' en un arreglo llega como texto posicional (a -Solo)
+    $argumentos = @{}
+    if ($SinCompilar) { $argumentos['SinCompilar'] = $true }
     & (Join-Path $Dir 'publicar-frontends.ps1') @argumentos
     if ($LASTEXITCODE -ne 0) { exit 1 }
 }
