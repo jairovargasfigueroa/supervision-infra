@@ -10,13 +10,17 @@
 //   5. RabbitMQ por TLS (AMQPS): saludo AMQP, colas de la plataforma y de n8n y servicios conectados por TLS;
 //   6. n8n (listo y con sus flujos escuchando) y Mailpit;
 //   7. con --completa: registra una obra, el residente presenta la planilla del mes, el cliente la aprueba (la saga
-//      cruza dos grupos), espera el cobro y la nota de cobro en Mailpit (como pruebas/saga.mjs y cobranza.mjs).
+//      cruza dos grupos), espera el cobro y la nota de cobro en Mailpit (como pruebas/saga.mjs y cobranza.mjs); si el
+//      correo sale por otro servidor (SMTP_HOST, 602: el Gmail de la plataforma), el envío NOTA_COBRO del cobro;
+//   8. 602, en la nube (sin CA_LOCAL): los puertos internos de cada máquina no responden desde internet.
 // Termina con un resumen y código 1 si algo falla.
-// Uso: node pruebas/humo-despliegue.mjs --entorno produccion-local/.env [--completa]
+// Uso: node pruebas/humo-despliegue.mjs --entorno produccion-local/.env [--completa] [--sin-google]
+// --sin-google (602, mientras Google no está desplegado): omite Materiales e IA y lo dice en el resumen.
 // Con --completa crea datos (una obra «Humo 601 …» con su planilla aprobada y su cobro): solo en un entorno de prueba.
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import net from 'node:net';
 import tls from 'node:tls';
 import { resolverLocalhost, usarCa } from './red-local.mjs';
 
@@ -25,6 +29,11 @@ const argumentos = process.argv.slice(2);
 const indice = argumentos.indexOf('--entorno');
 const archivo = indice >= 0 ? argumentos[indice + 1] : argumentos.find((a) => a.startsWith('--entorno='))?.slice(10);
 const COMPLETA = argumentos.includes('--completa');
+const SIN_GOOGLE = argumentos.includes('--sin-google');
+if (COMPLETA && SIN_GOOGLE) {
+  console.error('--completa necesita Google: la saga pasa por Materiales.');
+  process.exit(2);
+}
 if (!archivo) {
   console.error('Uso: node pruebas/humo-despliegue.mjs --entorno <archivo .env> [--completa]');
   process.exit(2);
@@ -66,6 +75,14 @@ const N8N = sinBarra(valor('N8N_URL'));
 const MAILPIT = sinBarra(valor('MAILPIT_URL'));
 const RABBITMQ_PANEL = sinBarra(valor('RABBITMQ_PANEL_URL'));
 const CLAVE = valor('USUARIOS_PRUEBA_CLAVE') || 'Prueba123!';
+// 602: la interfaz de Mailpit va con autenticación básica en la nube; el correo puede salir por otro servidor
+const AUTH_MAILPIT = valor('MAILPIT_USUARIO') && valor('MAILPIT_CLAVE')
+  ? { authorization: 'Basic ' + Buffer.from(`${valor('MAILPIT_USUARIO')}:${valor('MAILPIT_CLAVE')}`).toString('base64') }
+  : {};
+const CORREO_EN_MAILPIT = !valor('SMTP_HOST') || valor('SMTP_HOST') === 'mailpit';
+const omitidas = [];
+/** Con --sin-google, las piezas de Google no se comprueban (se anotan para el resumen). */
+const deGoogle = (nombre) => SIN_GOOGLE && ['Materiales', 'IA', 'materiales', 'ia'].includes(nombre);
 process.env.KEYCLOAK_URL = KEYCLOAK; // token-usuario.mjs lo lee al importarse
 const { obtenerTokensUsuario, leerToken } = await import('./token-usuario.mjs');
 
@@ -106,6 +123,7 @@ console.log(`Entorno: ${rutaEnv}${COMPLETA ? ' (completa)' : ''}`);
 // --- 1. Salud de los servicios y frontends --------------------------------------------------------------------------
 seccion('1. Servicios y frontends');
 for (const [nombre, base] of [['Obras', OBRAS], ['Materiales', MATERIALES], ['Finanzas', FINANZAS], ['IA', IA], ['Sincronización', SINCRONIZACION], ['Gateway', GATEWAY]]) {
+  if (deGoogle(nombre)) { omitidas.push(`${nombre}: GET /salud`); continue; }
   const r = await pedir(`${base}/salud`);
   comprobar(`${nombre}: GET /salud`, r.estado === 200 && r.json?.estado === 'ok', `${base} → ${resumen(r)}`);
 }
@@ -182,7 +200,8 @@ seccion('3. Gateway');
 const salud = await graphql(null, '{ salud }');
 comprobar('{ salud } sin token', salud.estado === 200 && typeof salud.json?.data?.salud === 'string', resumen(salud));
 if (tokens.gerente1) {
-  const r = await graphql(tokens.gerente1, '{ obras { id nombre estado } materiales(tamano: 1) { total } }');
+  if (SIN_GOOGLE) omitidas.push('materiales en la consulta del gerente');
+  const r = await graphql(tokens.gerente1, SIN_GOOGLE ? '{ obras { id nombre estado } }' : '{ obras { id nombre estado } materiales(tamano: 1) { total } }');
   comprobar('consulta del gerente (obras de Obras y materiales de Materiales)',
     r.estado === 200 && Array.isArray(r.json?.data?.obras) && !r.json?.errors,
     r.json?.errors ? JSON.stringify(r.json.errors[0]) : `${r.json?.data?.obras?.length ?? '?'} obras · ${r.json?.data?.materiales?.total ?? '?'} materiales`);
@@ -194,6 +213,7 @@ if (tokens.gerente1) {
 seccion('4. /mcp sin token');
 const inicializar = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'humo-601', version: '1' } } });
 for (const [nombre, base] of [['Obras', OBRAS], ['Materiales', MATERIALES], ['Finanzas', FINANZAS], ['IA', IA]]) {
+  if (deGoogle(nombre)) { omitidas.push(`${nombre}: POST /mcp`); continue; }
   const r = await pedir(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: inicializar });
   comprobar(`${nombre}: POST /mcp sin token → 401`, r.estado === 401, resumen(r));
 }
@@ -220,11 +240,13 @@ const esperadas = ['obras', 'materiales', 'finanzas', 'ia', 'plataforma.fallidos
 comprobar('colas de la plataforma y de n8n', esperadas.every((c) => porNombre[c]),
   Array.isArray(colas.json) ? `faltan: ${esperadas.filter((c) => !porNombre[c]).join(', ') || 'ninguna'}` : resumen(colas));
 for (const cola of ['obras', 'materiales', 'finanzas', 'ia']) {
+  if (deGoogle(cola)) { omitidas.push(`consumidor de la cola ${cola}`); continue; }
   comprobar(`la cola ${cola} tiene consumidor`, (porNombre[cola]?.consumers ?? 0) > 0, `${porNombre[cola]?.consumers ?? 0} consumidores`);
 }
 const conexiones = await pedir(`${RABBITMQ_PANEL}/api/connections?columns=user,ssl`, { headers: { authorization: autorizacion } });
 const lista = Array.isArray(conexiones.json) ? conexiones.json : [];
 for (const usuario of ['obras', 'materiales', 'finanzas', 'ia']) {
+  if (deGoogle(usuario)) { omitidas.push(`${usuario} conectado por TLS`); continue; }
   const suyas = lista.filter((c) => c.user === usuario);
   comprobar(`${usuario} conectado por TLS`, suyas.length > 0 && suyas.every((c) => c.ssl), `${suyas.length} conexiones · ssl ${suyas.map((c) => c.ssl).join(',') || '-'}`);
 }
@@ -241,7 +263,7 @@ if (N8N) {
 } else {
   comprobar('n8n', false, 'falta N8N_URL en el entorno');
 }
-const mailpit = await pedir(`${MAILPIT}/api/v1/info`);
+const mailpit = await pedir(`${MAILPIT}/api/v1/info`, { headers: AUTH_MAILPIT });
 comprobar('Mailpit responde', mailpit.estado === 200, `${MAILPIT} → ${resumen(mailpit)}`);
 
 // --- 7. Aprobación de planilla de punta a punta ---------------------------------------------------------------------
@@ -250,7 +272,21 @@ if (COMPLETA) {
   await completa();
 }
 
+// --- 8. Puertos internos cerrados (602, solo en la nube) --------------------------------------------------------------
+if (!valor('CA_LOCAL')) {
+  seccion('8. Puertos internos cerrados desde internet');
+  const maquinas = [['Azure', new URL(KEYCLOAK).hostname], ['AWS', new URL(SINCRONIZACION).hostname]];
+  if (!SIN_GOOGLE) maquinas.push(['Google', new URL(IA).hostname]);
+  const internos = [5432, 5672, 15672, 5678, 1025, 8025, 8080, 8081, 8082, 8083, 8084, 8085, 4000, 27017, 11434];
+  for (const [nube, nombre] of maquinas) {
+    const abiertos = [];
+    for (const puerto of internos) if (await puertoAbierto(nombre, puerto)) abiertos.push(puerto);
+    comprobar(`${nube}: ningún puerto interno responde (${internos.length} probados)`, abiertos.length === 0, abiertos.length ? `abiertos: ${abiertos.join(', ')}` : nombre);
+  }
+}
+
 const fallas = resultados.filter((r) => !r.ok);
+if (omitidas.length) console.log(`\nOmitidas por --sin-google (${omitidas.length}): ${omitidas.join(' | ')}`);
 console.log(`\n${resultados.length - fallas.length} de ${resultados.length} comprobaciones correctas${fallas.length ? `; fallaron: ${fallas.map((f) => f.nombre).join(' | ')}` : ''}`);
 process.exit(fallas.length ? 1 : 0);
 
@@ -305,14 +341,39 @@ async function completa() {
   } while (planilla?.estado === 'APROBANDO' && Date.now() - desde < 120000);
   if (!comprobar('saga terminada: APROBADA con cobro (Obras → Finanzas → Materiales)', planilla?.estado === 'APROBADA' && /^COB-\d{4}-\d{4}$/.test(planilla?.cobroNumero ?? ''),
     `${planilla?.estado} ${planilla?.cobroNumero ?? ''} ${planilla?.observacion ?? ''} (${((Date.now() - desde) / 1000).toFixed(0)} s)`)) return;
+  if (!CORREO_EN_MAILPIT) {
+    // 602: el correo sale por otro servidor (el Gmail de la plataforma): se comprueba el envío que n8n registra en
+    // Finanzas (la columna «Correos» de la pestaña Cobros del ERP)
+    let envio;
+    const hasta = Date.now() + 90000;
+    while (!envio && Date.now() < hasta) {
+      const cobros = (await graphql(admin, 'query($id: ID!) { obra(id: $id) { cobros { numero envios { tipo destinatario enviadoEn } } } }', { id: obraId })).json?.data?.obra?.cobros ?? [];
+      envio = cobros.find((c) => c.numero === planilla.cobroNumero)?.envios?.find((e) => e.tipo === 'NOTA_COBRO');
+      if (!envio) await esperar(3000);
+    }
+    comprobar(`nota de cobro enviada por ${valor('SMTP_HOST')} (envío registrado en Finanzas)`, envio, envio ? `a ${envio.destinatario} el ${envio.enviadoEn}` : 'sin envío en 90 s');
+    console.log(`      obra de prueba ${obraId}`);
+    return;
+  }
   const asunto = `Nota de cobro ${planilla.cobroNumero} · `;
   let nota;
   const limite = Date.now() + 90000;
   while (!nota && Date.now() < limite) {
-    const lista = (await pedir(`${MAILPIT}/api/v1/messages?limit=100`)).json?.messages ?? [];
+    const lista = (await pedir(`${MAILPIT}/api/v1/messages?limit=100`, { headers: AUTH_MAILPIT })).json?.messages ?? [];
     nota = lista.find((m) => new Date(m.Created) >= inicio && m.Subject.startsWith(asunto));
     if (!nota) await esperar(3000);
   }
   comprobar('nota de cobro en Mailpit (n8n)', nota, nota ? `«${nota.Subject}» a ${(nota.To ?? []).map((d) => d.Address).join(',')}` : 'no llegó en 90 s');
   console.log(`      obra de prueba ${obraId}`);
+}
+
+/** ¿Acepta conexiones TCP el puerto? (3 s; sin respuesta o rechazo = cerrado) */
+function puertoAbierto(host, puerto) {
+  return new Promise((listo) => {
+    const socket = net.connect({ host, port: puerto });
+    const terminar = (abierto) => { socket.destroy(); listo(abierto); };
+    socket.setTimeout(3000, () => terminar(false));
+    socket.once('connect', () => terminar(true));
+    socket.once('error', () => terminar(false));
+  });
 }
