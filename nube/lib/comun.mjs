@@ -192,9 +192,21 @@ export function olvidarHuella(ip) {
   ejecutar('ssh-keygen', ['-R', ip], { permitirFallo: true });
 }
 
-/** Ejecuta un comando en la máquina por SSH (con el nombre de ~/.ssh/config). */
+/**
+ * Ejecuta un comando en la máquina por SSH (con el nombre de ~/.ssh/config). Si falla y el que llama no lo permite,
+ * lo reintenta dos veces más (un corte pasajero de SSH, visto en la t3.micro al levantar los contenedores); los
+ * comandos que se mandan son idempotentes (copiar, pull, up -d, esperar).
+ */
 export function remoto(nube, comando, opciones = {}) {
-  return ejecutar('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', `supervision-${nube}`, comando], opciones);
+  const argumentos = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', `supervision-${nube}`, comando];
+  if (opciones.permitirFallo) return ejecutar('ssh', argumentos, opciones);
+  for (let intento = 1; intento < 3; intento++) {
+    const salida = ejecutar('ssh', argumentos, { ...opciones, permitirFallo: true });
+    if (salida !== null) return salida;
+    console.log(`aviso    falló un comando por SSH en ${nube} (intento ${intento}); se reintenta en 10 s`);
+    spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 10000)']);
+  }
+  return ejecutar('ssh', argumentos, opciones);
 }
 
 /** Espera a que la máquina acepte SSH y termine cloud-init (Docker instalado). */
