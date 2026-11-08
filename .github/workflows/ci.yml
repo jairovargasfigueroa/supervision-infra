@@ -1,6 +1,6 @@
 # 601 · CI de infra: en cada pull request hacia develop o main (y en cada push a main) valida lo que se monta en
 # los contenedores, sin construir imágenes ni levantar nada: los docker compose de desarrollo (todos los perfiles,
-# también con el de la GPU) y de la producción local (los tres grupos), el realm de Keycloak, las definiciones de
+# también con el de la GPU), de la producción local (los tres grupos) y de la nube (602), el realm de Keycloak, las definiciones de
 # RabbitMQ, los flujos y credenciales de n8n y la sintaxis de los scripts. No usa secretos: los valores vacíos de los
 # .env.example se rellenan con un valor de prueba solo para interpolar.
 name: ci
@@ -40,6 +40,14 @@ jobs:
           for grupo in azure google aws; do
             echo "compose.$grupo.yml"
             docker compose -f "produccion-local/compose.$grupo.yml" --env-file produccion-local/.env --profile '*' config -q
+          done
+
+      - name: Docker Compose de la nube (azure, google y aws, 602)
+        run: |
+          sed -E 's/^([A-Z_0-9]+)=$/=valor-de-prueba/' nube/.env.example > nube/.env
+          for nube in azure google aws; do
+            echo "nube/compose.$nube.yml"
+            docker compose -f "nube/compose.$nube.yml" --env-file nube/.env --profile '*' config -q
           done
 
       - name: Realm, definiciones de RabbitMQ y flujos de n8n bien formados

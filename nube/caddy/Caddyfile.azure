@@ -1,0 +1,60 @@
+# 602 · Caddy de la nube de Azure (vm-plataforma): HTTPS en 443 (80 redirige) con un certificado de Let's Encrypt por
+# nombre (desafío HTTP). Publica Keycloak, el gateway, Obras, Finanzas, n8n, Mailpit (con autenticación básica), el
+# panel de RabbitMQ y los 5 frontends compilados (/sitios). Direcciones: https://<pieza>.{$DOMINIO}
+{
+	email {$ACME_CORREO}
+}
+
+import /etc/caddy/comun.caddy
+
+keycloak.{$DOMINIO} {
+	import servicio keycloak:8080
+}
+
+gateway.{$DOMINIO} {
+	import servicio gateway:4000
+}
+
+obras.{$DOMINIO} {
+	import servicio obras:8081
+}
+
+finanzas.{$DOMINIO} {
+	import servicio finanzas-api:8083
+}
+
+n8n.{$DOMINIO} {
+	import servicio n8n:5678
+}
+
+mailpit.{$DOMINIO} {
+	basic_auth {
+		{$MAILPIT_USUARIO} {$MAILPIT_CLAVE_HASH}
+	}
+	import servicio mailpit:8025
+}
+
+# El panel de RabbitMQ; además, su certificado es el que usa AMQPS en 5671 (maquina/certificado-rabbitmq.sh)
+rabbitmq.{$DOMINIO} {
+	import servicio rabbitmq:15672
+}
+
+erp.{$DOMINIO} {
+	import estatico erp-shell
+}
+
+mf-obras.{$DOMINIO} {
+	import remoto mf-obras
+}
+
+mf-materiales.{$DOMINIO} {
+	import remoto mf-materiales
+}
+
+mf-supervision.{$DOMINIO} {
+	import remoto mf-supervision
+}
+
+portal.{$DOMINIO} {
+	import estatico portal
+}
