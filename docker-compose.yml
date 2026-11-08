@@ -381,6 +381,12 @@ services:
       EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
       COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:-cobranzas@constructora-andina.test}
       COBRANZA_CORREO: ${COBRANZA_CORREO:-cobranzas@constructora-andina.test}
+      # 602 · Servidor de correo (secretos.sh lo pasa a la credencial SMTP). Vacías: Mailpit (mailpit:1025, sin TLS)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PUERTO: ${SMTP_PUERTO:-}
+      SMTP_SEGURO: ${SMTP_SEGURO:-}
+      SMTP_USUARIO: ${SMTP_USUARIO:-}
+      SMTP_CLAVE: ${SMTP_CLAVE:-}
       # 010 · Avisos: Materiales (stock bajo), enlace del portal en el correo de la planilla y Firebase Cloud Messaging.
       # Sin las tres de Firebase, iniciar.sh importa los flujos de push sin publicarlos; la cuenta de servicio pasa a
       # la credencial googleApi por CREDENTIALS_OVERWRITE_DATA (secretos.sh)

@@ -4,7 +4,8 @@
 # la monta en /sitios) y escribe con envsubst, con las variables de .env, los archivos que dependen del entorno:
 # configuracion.json del shell y del portal y federation.manifest.json del shell, a partir de sus plantillas
 # (*.plantilla). La misma compilación sirve en cualquier entorno; en la 602 se hace lo mismo hacia el hosting.
-# Uso: ./produccion-local/publicar-frontends.sh [--sin-compilar] [--solo erp-shell,portal]
+# Uso: ./produccion-local/publicar-frontends.sh [--sin-compilar] [--solo erp-shell,portal] [--entorno <.env>] [--destino <carpeta>]
+# 602: --entorno toma las direcciones de otro .env (la nube: nube/.env) y --destino copia a otra carpeta (nube/sitios).
 # Ojo: compilar mf-materiales o mf-supervision reescribe su dist/, que también usa su servidor de desarrollo
 # (npm start): si está corriendo, detenlo antes o usa --sin-compilar.
 . "$(dirname "$0")/comun.sh"
@@ -12,11 +13,14 @@ set -e
 
 COMPILAR=si
 SOLO=""
+SITIOS="$DIR/sitios"
 while [ $# -gt 0 ]; do
   case "$1" in
     --sin-compilar) COMPILAR=no; shift ;;
     --solo) SOLO="${2:-}"; shift 2 ;;
-    *) detener "Opción desconocida: $1 (uso: publicar-frontends.sh [--sin-compilar] [--solo a,b])" ;;
+    --entorno) RUTA_ENV="$(cd "$(dirname "${2:?falta la ruta de --entorno}")" && pwd)/$(basename "$2")"; shift 2 ;;
+    --destino) mkdir -p "${2:?falta la carpeta de --destino}"; SITIOS="$(cd "$2" && pwd)"; shift 2 ;;
+    *) detener "Opción desconocida: $1 (uso: publicar-frontends.sh [--sin-compilar] [--solo a,b] [--entorno <.env>] [--destino <carpeta>])" ;;
   esac
 done
 command -v envsubst >/dev/null 2>&1 || detener 'Falta envsubst (paquete gettext; Git Bash ya lo trae).'
@@ -36,7 +40,7 @@ escribir_plantilla() {
   local plantilla="$1" destino="$2" variables="$3" variable lista="" resto
   for variable in $variables; do
     if grep -q "\${$variable}" "$plantilla"; then
-      [ -n "$(env_valor "$variable")" ] || detener "Falta $variable en produccion-local/.env (la usa $plantilla)."
+      [ -n "$(env_valor "$variable")" ] || detener "Falta $variable en $RUTA_ENV (la usa $plantilla)."
       export "$variable=$(env_valor "$variable")"
       lista+=" \${$variable}"
     fi
@@ -51,7 +55,7 @@ for linea in "${FRONTENDS[@]}"; do
   if [ -n "$SOLO" ] && [[ ",$SOLO," != *",$nombre,"* ]]; then continue; fi
   proyecto="$(carpeta "$variable" "$por_defecto")"
   paso "$nombre ($proyecto)"
-  [ -f "$proyecto/package.json" ] || detener "No encuentro el proyecto en $proyecto: clónalo o corrige $variable en produccion-local/.env."
+  [ -f "$proyecto/package.json" ] || detener "No encuentro el proyecto en $proyecto: clónalo o corrige $variable en $RUTA_ENV."
   if [ "$COMPILAR" = si ]; then
     if [ ! -d "$proyecto/node_modules" ]; then
       (cd "$proyecto" && npm ci --no-audit --no-fund) || detener "npm ci falló en $nombre."
@@ -61,11 +65,11 @@ for linea in "${FRONTENDS[@]}"; do
   if [ ! -f "$proyecto/$salida/index.html" ] && [ ! -f "$proyecto/$salida/remoteEntry.json" ]; then
     detener "No hay compilación en $proyecto/$salida (sin index.html ni remoteEntry.json): compila sin --sin-compilar."
   fi
-  sitio="$DIR/sitios/$nombre"
+  sitio="$SITIOS/$nombre"
   rm -rf "$sitio"
   mkdir -p "$sitio"
   cp -R "$proyecto/$salida/." "$sitio/"
-  echo "ok       copiado a produccion-local/sitios/$nombre"
+  echo "ok       copiado a $sitio"
   for archivo in $plantillas; do
     plantilla=""
     for candidato in "$proyecto/$archivo.plantilla" "$proyecto/public/$archivo.plantilla"; do
@@ -73,7 +77,7 @@ for linea in "${FRONTENDS[@]}"; do
     done
     [ -n "$plantilla" ] || detener "Falta la plantilla $archivo.plantilla en $proyecto (tarea de la 601 de $nombre)."
     escribir_plantilla "$plantilla" "$sitio/$archivo" "$variables"
-    echo "ok       $archivo escrito con las direcciones de produccion-local/.env"
+    echo "ok       $archivo escrito con las direcciones de $RUTA_ENV"
   done
   if [ "$nombre" = erp-shell ]; then
     # 104: el service worker del shell guarda los remotos de estas direcciones (la compilación trae las de desarrollo)
@@ -83,4 +87,4 @@ for linea in "${FRONTENDS[@]}"; do
   fi
 done
 echo
-echo 'Frontends publicados. Caddy los sirve sin reiniciar (azure: https://erp.azure.localhost:8443 y https://portal.azure.localhost:8443).'
+echo "Frontends publicados en $SITIOS (shell: $(env_valor ERP_URL); portal: $(env_valor PORTAL_URL))."

@@ -1,0 +1,15 @@
+# 602 · Caddy de la nube de Google (vm-ia): HTTPS en 443 (80 redirige) con Let's Encrypt. Publica el servicio de IA
+# (ia-api, también /mcp) y Materiales.
+{
+	email {$ACME_CORREO}
+}
+
+import /etc/caddy/comun.caddy
+
+ia.{$DOMINIO} {
+	import servicio ia-api:8085
+}
+
+materiales.{$DOMINIO} {
+	import servicio materiales:8082
+}

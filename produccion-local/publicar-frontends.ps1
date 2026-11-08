@@ -3,11 +3,14 @@
 # la monta en /sitios) y escribe con las variables de .env los archivos que dependen del entorno: configuracion.json
 # del shell y del portal y federation.manifest.json del shell, a partir de sus plantillas (*.plantilla). La misma
 # compilación sirve en cualquier entorno; en la 602 se hace lo mismo hacia el hosting de estáticos.
-# Uso: ./produccion-local/publicar-frontends.ps1 [-SinCompilar] [-Solo erp-shell,portal]
+# Uso: ./produccion-local/publicar-frontends.ps1 [-SinCompilar] [-Solo erp-shell,portal] [-Entorno <.env>] [-Destino <carpeta>]
+# 602: -Entorno toma las direcciones de otro .env (la nube: nube/.env) y -Destino copia a otra carpeta (nube/sitios).
 # Ojo: compilar mf-materiales o mf-supervision reescribe su dist/, que también usa su servidor de desarrollo
 # (npm start): si está corriendo, detenlo antes o usa -SinCompilar.
-param([switch]$SinCompilar, [string[]]$Solo)
+param([switch]$SinCompilar, [string[]]$Solo, [string]$Entorno, [string]$Destino)
 . (Join-Path $PSScriptRoot 'comun.ps1')
+if ($Entorno) { $script:RutaEnv = (Resolve-Path $Entorno).Path }
+$sitios = if ($Destino) { New-Item -ItemType Directory -Force $Destino | Out-Null; (Resolve-Path $Destino).Path } else { Join-Path $Dir 'sitios' }
 
 $envPl = Leer-Env
 # Nombre, variable de la carpeta, carpeta por defecto, salida de la compilación, plantillas y sus variables
@@ -33,7 +36,7 @@ function Escribir-Plantilla([string]$Plantilla, [string]$Destino, [string[]]$Var
     $texto = [System.IO.File]::ReadAllText($Plantilla)
     foreach ($variable in $Variables) {
         if ($texto.Contains('${' + $variable + '}')) {
-            if (-not $envPl[$variable]) { Detener "Falta $variable en produccion-local/.env (la usa $Plantilla)." }
+            if (-not $envPl[$variable]) { Detener "Falta $variable en $RutaEnv (la usa $Plantilla)." }
             $texto = $texto.Replace('${' + $variable + '}', $envPl[$variable])
         }
     }
@@ -44,7 +47,7 @@ function Escribir-Plantilla([string]$Plantilla, [string]$Destino, [string[]]$Var
 foreach ($frontend in $frontends) {
     $carpeta = Carpeta $envPl $frontend.Variable $frontend.PorDefecto
     Paso "$($frontend.Nombre) ($carpeta)"
-    if (-not (Test-Path (Join-Path $carpeta 'package.json'))) { Detener "No encuentro el proyecto en ${carpeta}: clónalo o corrige $($frontend.Variable) en produccion-local/.env." }
+    if (-not (Test-Path (Join-Path $carpeta 'package.json'))) { Detener "No encuentro el proyecto en ${carpeta}: clónalo o corrige $($frontend.Variable) en $RutaEnv." }
     if (-not $SinCompilar) {
         Push-Location $carpeta
         try {
@@ -60,16 +63,16 @@ foreach ($frontend in $frontends) {
     if (-not (Test-Path (Join-Path $salida 'index.html')) -and -not (Test-Path (Join-Path $salida 'remoteEntry.json'))) {
         Detener "No hay compilación en $salida (sin index.html ni remoteEntry.json): compila sin -SinCompilar."
     }
-    $sitio = Join-Path $Dir "sitios\$($frontend.Nombre)"
+    $sitio = Join-Path $sitios $frontend.Nombre
     if (Test-Path $sitio) { Remove-Item -Recurse -Force $sitio }
     New-Item -ItemType Directory -Force $sitio | Out-Null
     Copy-Item -Recurse -Force (Join-Path $salida '*') $sitio
-    Write-Host "ok       copiado a produccion-local/sitios/$($frontend.Nombre)"
+    Write-Host "ok       copiado a $sitio"
     foreach ($archivo in $frontend.Plantillas) {
         $plantilla = @((Join-Path $carpeta "$archivo.plantilla"), (Join-Path $carpeta "public\$archivo.plantilla")) | Where-Object { Test-Path $_ } | Select-Object -First 1
         if (-not $plantilla) { Detener "Falta la plantilla $archivo.plantilla en $carpeta (tarea de la 601 de $($frontend.Nombre))." }
         Escribir-Plantilla $plantilla (Join-Path $sitio $archivo) $frontend.Variables
-        Write-Host "ok       $archivo escrito con las direcciones de produccion-local/.env"
+        Write-Host "ok       $archivo escrito con las direcciones de $RutaEnv"
     }
     if ($frontend.Nombre -eq 'erp-shell') {
         # 104: el service worker del shell guarda los remotos de estas direcciones (la compilación trae las de desarrollo)
@@ -79,6 +82,6 @@ foreach ($frontend in $frontends) {
     }
 }
 Write-Host ''
-Write-Host 'Frontends publicados. Caddy los sirve sin reiniciar (azure: https://erp.azure.localhost:8443 y https://portal.azure.localhost:8443).'
+Write-Host "Frontends publicados en $sitios (shell: $($envPl['ERP_URL']); portal: $($envPl['PORTAL_URL']))."
 
 exit 0

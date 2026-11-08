@@ -161,9 +161,13 @@ comprobar_entorno() {
     COMPOSE_OBRAS="$(archivo_del_entorno SEMILLA_COMPOSE_OBRAS)" || exit 1
     COMPOSE_FINANZAS="$(archivo_del_entorno SEMILLA_COMPOSE_FINANZAS)" || exit 1
     COMPOSE_MATERIALES="$(archivo_del_entorno SEMILLA_COMPOSE_MATERIALES)" || exit 1
-    echo "ok       Obras con su imagen ($COMPOSE_OBRAS)"
-    echo "ok       Finanzas con su imagen ($COMPOSE_FINANZAS)"
-    echo "ok       Materiales con su imagen ($COMPOSE_MATERIALES)"
+    # 602: en la nube, cada carga corre dentro de su máquina por un contexto de Docker (vacío = Docker local)
+    CONTEXTO_OBRAS="$(env_valor SEMILLA_CONTEXTO_OBRAS)"
+    CONTEXTO_FINANZAS="$(env_valor SEMILLA_CONTEXTO_FINANZAS)"
+    CONTEXTO_MATERIALES="$(env_valor SEMILLA_CONTEXTO_MATERIALES)"
+    echo "ok       Obras con su imagen ($COMPOSE_OBRAS${CONTEXTO_OBRAS:+, contexto $CONTEXTO_OBRAS})"
+    echo "ok       Finanzas con su imagen ($COMPOSE_FINANZAS${CONTEXTO_FINANZAS:+, contexto $CONTEXTO_FINANZAS})"
+    echo "ok       Materiales con su imagen ($COMPOSE_MATERIALES${CONTEXTO_MATERIALES:+, contexto $CONTEXTO_MATERIALES})"
     if [ "$FOTOS" = si ]; then
       COMPOSE_S3="$(archivo_del_entorno SEMILLA_COMPOSE_S3)" || exit 1
       echo "ok       S3 con s3-cli ($COMPOSE_S3)"
@@ -213,18 +217,20 @@ anotar_resumen() {
 }
 
 # 601: carga de un servicio con su imagen de producción (modo demostración), en el grupo donde corre.
-# Uso: ejecutar_en_imagen <nombre> <compose> <servicio> [-e VAR=valor ...] [-- comando...]
+# Uso: ejecutar_en_imagen <nombre> <compose> <servicio> [-c contexto] [-e VAR=valor ...] [-- comando...]
+# 602: -c corre la carga en otro Docker (un contexto por SSH: la máquina de la nube); vacío, el Docker local.
 ejecutar_en_imagen() {
-  local nombre="$1" archivo="$2" servicio="$3" variables=() comando=()
+  local nombre="$1" archivo="$2" servicio="$3" variables=() comando=() contexto=()
   shift 3
   while [ $# -gt 0 ]; do
     case "$1" in
+      -c) [ -n "$2" ] && contexto=(--context "$2"); shift 2 ;;
       -e) variables+=(-e "$2"); shift 2 ;;
       --) shift; comando=("$@"); break ;;
       *) detener "ejecutar_en_imagen: argumento inesperado $1" ;;
     esac
   done
-  ejecutar "$nombre" "$INFRA" docker compose -f "$(ruta_docker "$archivo")" --env-file "$(ruta_docker "$RUTA_ENV")" run --rm --no-deps --no-TTY \
+  ejecutar "$nombre" "$INFRA" docker "${contexto[@]}" compose -f "$(ruta_docker "$archivo")" --env-file "$(ruta_docker "$RUTA_ENV")" run --rm --no-deps --no-TTY \
     -e SEMILLA_DEMO=si -e "SEMILLA_FECHA=$SEMILLA_FECHA" "${variables[@]}" "$servicio" "${comando[@]}"
 }
 
@@ -255,15 +261,15 @@ cargar_datos() {
     # 601: modo demostración; solo carga, nunca recargar
     [ "$modo_obras" = cargar ] || detener 'Con SEMILLA_DEMO=si solo se carga: el vaciado está prohibido fuera de desarrollo.'
     paso 'Obras (imagen de producción, perfiles prod y semilla)'
-    ejecutar_en_imagen Obras "$COMPOSE_OBRAS" obras -e SPRING_PROFILES_ACTIVE=prod,semilla
+    ejecutar_en_imagen Obras "$COMPOSE_OBRAS" obras -c "$CONTEXTO_OBRAS" -e SPRING_PROFILES_ACTIVE=prod,semilla
     anotar_resumen Obras
 
     paso 'Finanzas (imagen de producción, DatosPruebaSeeder)'
-    ejecutar_en_imagen Finanzas "$COMPOSE_FINANZAS" finanzas-api -- php artisan db:seed --class=DatosPruebaSeeder --force
+    ejecutar_en_imagen Finanzas "$COMPOSE_FINANZAS" finanzas-api -c "$CONTEXTO_FINANZAS" -- php artisan db:seed --class=DatosPruebaSeeder --force
     anotar_resumen Finanzas
 
     paso 'Materiales (imagen de producción, semilla cargar)'
-    ejecutar_en_imagen Materiales "$COMPOSE_MATERIALES" materiales -- node dist/semilla/main.js cargar
+    ejecutar_en_imagen Materiales "$COMPOSE_MATERIALES" materiales -c "$CONTEXTO_MATERIALES" -- node dist/semilla/main.js cargar
     anotar_resumen Materiales
   else
     paso "Obras (perfil semilla, modo $modo_obras)"

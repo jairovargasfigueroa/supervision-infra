@@ -1,0 +1,64 @@
+# 602 · Nube de AWS (vm-sincronizacion, región us-east-2: la única que permite la organización de la cuenta):
+# Sincronización y Caddy. A diferencia del grupo «aws» del ensayo local, sin DynamoDB Local ni MinIO: las tablas de
+# DynamoDB y el bucket S3 son los reales (los crea «nube.mjs crear aws --datos») y Sincronización toma las credenciales
+# del rol de la máquina (IMDSv2), sin claves. Cambios respecto del ensayo: README.
+name: supervision-aws
+
+x-registros: &registros
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
+
+services:
+  sincronizacion:
+    image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-ms-sincronizacion:${SINCRONIZACION_ETIQUETA:-${IMAGEN_ETIQUETA:-main}}
+    logging: *registros
+    environment:
+      NODE_ENV: production
+      PORT: "8084"
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      AUDIENCIA: plataforma-api
+      OBRAS_URL: ${OBRAS_URL}
+      MATERIALES_URL: ${MATERIALES_URL}
+      # DynamoDB real (sin endpoint) con el rol sincronizacion-ec2 de la máquina; las tablas las crea la infraestructura
+      DYNAMODB_ENDPOINT: ""
+      AWS_REGION: ${AWS_REGION:-us-east-2}
+      DYNAMODB_CREAR_TABLAS: "false"
+      TIEMPO_MAXIMO_LLAMADA_MS: "5000"
+      TIEMPO_MAXIMO_LOTE_MS: "20000"
+    depends_on:
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  # AWS CLI contra el bucket real con las claves de obras-s3 (solo fotos/): lo usa la semilla de demostración desde la
+  # PC para subir las fotos (SEMILLA_COMPOSE_S3, sin contexto: corre en el Docker local). Perfil herramientas.
+  s3-cli:
+    image: amazon/aws-cli:2.38.0
+    profiles: ["herramientas"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${OBRAS_S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${OBRAS_S3_SECRET_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-2}
+      S3_BUCKET: ${S3_BUCKET:-}
+    volumes:
+      - ../semilla/fotos:/semilla/fotos:ro
+    command: ["--version"]
+    restart: "no"
+
+  # HTTPS (80 y 443) con certificados de Let's Encrypt
+  caddy:
+    image: caddy:2.11.7-alpine
+    logging: *registros
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:?falta DOMINIO en .env}
+      ACME_CORREO: ${ACME_CORREO:?falta ACME_CORREO en .env}
+      ERP_URL: ${ERP_URL}
+    volumes:
+      - ./caddy/Caddyfile.aws:/etc/caddy/Caddyfile:ro
+      - ../produccion-local/caddy/comun.caddy:/etc/caddy/comun.caddy:ro
+      - ./datos/caddy:/data
+    restart: unless-stopped

@@ -12,6 +12,7 @@ Parte de la «Plataforma de supervisión de obras». Si existe `../CLAUDE.md` (c
 - Imágenes con versión fija: `rabbitmq:4.4-management`, `quay.io/keycloak/keycloak:26.8.1`, `postgres:17`, `mongo:8.0`, `amazon/dynamodb-local:3.3.2` (Sincronización, 101), `curlimages/curl:8.17.0` (solo para importar las definiciones y crear los usuarios de RabbitMQ al iniciar), `amazon/aws-cli:2.38.0` (servicio `s3-cli`, perfil `herramientas`: sube y borra las fotos de prueba en el bucket S3 de desarrollo), `ollama/ollama:0.40.4` (perfil `ollama`, 503: modelo de lenguaje local; GPU opcional con `docker-compose.gpu.yml`), `n8nio/n8n:2.43.7` y `axllent/mailpit:v1.31.6` (perfil `automatizacion`, 201 y 010: flujos de cobranza y de avisos, y buzón de correo de prueba)
 - «Producción local» (601, carpeta `produccion-local/`): los mismos `rabbitmq`, `keycloak` (ahora con `start` y PostgreSQL), `postgres`, `mongo`, `dynamodb-local`, `n8n`, `mailpit`, `ollama` y `aws-cli`, más `caddy:2.11.7-alpine` (HTTPS con una CA local y los frontends estáticos) y `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` (S3 compatible: el MinIO oficial ya no publica imágenes en Docker Hub; es su *fork* comunitario), y las imágenes de producción de los 6 servicios
 - Scripts en PowerShell (`.ps1`, Windows) y Bash (`.sh`, Linux y macOS) que hacen lo mismo
+- Nube (602, carpeta `nube/`): una máquina por nube (Ubuntu 24.04, Docker Engine) con los *compose* de `nube/`, Caddy con Let's Encrypt y `nube.mjs` (Node 24, sin dependencias) que llama a `az`, `aws`, `ssh`, `scp`, `tar` y `docker`
 - Pruebas de humo con Node 24 (`node pruebas/humo.mjs`, sin dependencias)
 
 ## Comandos
@@ -43,6 +44,8 @@ docker compose config -q          # valida el docker-compose.yml
 ./produccion-local/bajar.ps1 [-Grupo …] [-Datos]                         # 601: lo baja (con -Datos borra sus volúmenes)
 ./semilla/semilla.ps1 -Entorno produccion-local/.env                     # 601: datos de demostración (SEMILLA_DEMO=si)
 node pruebas/humo-despliegue.mjs --entorno produccion-local/.env [--completa]   # 601: prueba de humo del despliegue
+node nube/nube.mjs secretos | crear <nube> | desplegar <nube> | encender todas | apagar todas | estado   # 602 (nube/README.md)
+node pruebas/humo-despliegue.mjs --entorno nube/.env [--sin-google | --completa]   # 602: prueba de humo en la nube
 ```
 
 En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
@@ -84,7 +87,9 @@ semilla/
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 produccion-local/         601: ensayo con imágenes de producción en tres grupos (compose.azure|google|aws.yml, caddy/,
                           certificados, publicar-frontends, levantar y bajar; README «Producción local»)
-pruebas/humo-despliegue.mjs  601: prueba de humo de un despliegue (producción local o nube) con --entorno y --completa
+pruebas/humo-despliegue.mjs  601: prueba de humo de un despliegue (producción local o nube) con --entorno, --completa y --sin-google
+nube/                     602: compose.azure|google|aws.yml, caddy/, rabbitmq/tls.conf, maquina/ (cloud-init y certificado de
+                          RabbitMQ), nube.mjs y lib/; .env y sitios/ fuera del repo (nube/README.md)
 .github/workflows/ci.yml  601: valida los compose, el realm, las definiciones y los flujos en cada pull request
 docs/                     estructura, contratos y tareas por funcionalidad
 ```
@@ -92,6 +97,7 @@ docs/                     estructura, contratos y tareas por funcionalidad
 ## Reglas del proyecto
 
 - **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»). **Única excepción (601):** `semilla -Entorno <archivo>` con `SEMILLA_DEMO=si` en ese archivo carga los datos de demostración en la «producción local» o en la nube; `recargar` nunca corre con `SEMILLA_DEMO=si`.
+- **La nube (602)** se maneja solo con `nube/nube.mjs`; `nube/.env` (secretos de producción) nunca se sube y Jairo guarda una copia. Los *scripts* de `nube/` son de Node (no `.ps1` y `.sh`) porque llaman a CLI que corren igual en los dos sistemas.
 - **La «producción local» no toca el desarrollo:** proyectos de Compose `supervision-azure`, `supervision-google` y `supervision-aws`, con sus propias redes, volúmenes y puertos (8443, 9443, 10443 y 5671); nunca bajes ni recrees el proyecto `supervision` desde sus scripts. Solo comparte, en modo lectura, el volumen del modelo de Ollama.
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
 - Ninguna contraseña en el repo, salvo las que la especificación fija **solo para desarrollo**: la de los usuarios de prueba (`Prueba123!`) y el secreto del cliente `gateway` en el realm. El secreto de `ia-reportes` (401) va en `.env` y el realm lo toma al importar (`${IA_REPORTES_CLIENT_SECRET}`); igual el de `ia-agentes` (501, `${IA_AGENTES_CLIENT_SECRET}`) y el de `n8n` (201, `${N8N_KEYCLOAK_SECRETO}`; si falta, Keycloak le pone uno al azar). Las credenciales de n8n se guardan sin secretos y los reciben por `CREDENTIALS_OVERWRITE_DATA` (también la cuenta de servicio de Firebase, 010).

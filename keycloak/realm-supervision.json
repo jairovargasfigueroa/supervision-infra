@@ -421,7 +421,7 @@
       "enabled": true,
       "firstName": "Roberto",
       "lastName": "Justiniano Paz",
-      "email": "cliente1@correo.test",
+      "email": "${CLIENTE1_CORREO:cliente1@correo.test}",
       "emailVerified": true,
       "credentials": [
         {
