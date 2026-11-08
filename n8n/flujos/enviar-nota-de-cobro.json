@@ -1,0 +1,487 @@
+{
+  "id": "cob201NotaCobro0",
+  "name": "Enviar nota de cobro",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "queue": "n8n.cobro-emitido",
+        "options": {
+          "acknowledge": "executionFinishes",
+          "assertQueue": false,
+          "jsonParseBody": true,
+          "onlyContent": true,
+          "parallelMessages": 1
+        }
+      },
+      "id": "66004e39-a24a-5bf5-acb4-070d29b1bce1",
+      "name": "Cobro emitido",
+      "type": "n8n-nodes-base.rabbitmqTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "credentials": {
+        "rabbitmq": {
+          "id": "cred201RabbitMQ1",
+          "name": "RabbitMQ · usuario n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.FINANZAS_URL }}/cobros/{{ $json.datos.cobroId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "e32b6978-1ce4-54a2-9dbd-9cb312fb4b47",
+      "name": "Leer cobro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "949b9420-6f6f-541d-a09f-ec51d1cf03f3",
+              "leftValue": "={{ ($json.envios ?? []).some((envio) => envio.tipo === 'NOTA_COBRO') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5866c3d-0040-55f6-840f-ad21cfc986dd",
+      "name": "¿Nota ya enviada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "8daabf49-cebb-5660-bc88-9ecfd210c44d",
+      "name": "Ya enviada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.OBRAS_URL }}/planillas/{{ $('Leer cobro').item.json.planillaId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "f4b7ff90-47e4-5cea-80c8-82364afb35bd",
+      "name": "Leer planilla",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.OBRAS_URL }}/obras/{{ $('Leer cobro').item.json.obraId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "98ba8357-22fd-5df0-85af-9ef3b2034678",
+      "name": "Leer obra",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.KEYCLOAK_URL }}/admin/realms/supervision/users/{{ $json.asignaciones.clienteId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "a162ca5b-eb63-5af5-a3aa-d23acb941e4a",
+      "name": "Leer cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9f913e82-e076-53bd-a59a-e3ec946fa70f",
+              "leftValue": "={{ Boolean($json.email) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "012b66ac-6010-5548-8d71-1abe5b0be53b",
+      "name": "¿Tiene correo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "El cliente no tiene correo registrado"
+      },
+      "id": "0e4c981c-f7c2-5765-9c0c-d5d6c8825605",
+      "name": "Sin correo",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];\nconst bs = (n) => 'Bs ' + Number(n).toFixed(2).replace('.', ',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\nconst fecha = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/');\nconst periodoTexto = (p) => { const [anio, mes] = String(p).split('-'); return `${MESES[Number(mes) - 1]} ${anio}`; };\nconst esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst nombreDe = (u) => [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username;\n\nconst cobro = $('Leer cobro').item.json;\nconst planilla = $('Leer planilla').item.json;\nconst obra = $('Leer obra').item.json;\nconst cliente = $('Leer cliente').item.json;\nconst nombre = nombreDe(cliente);\nconst periodo = periodoTexto(planilla.periodo);\nreturn {\n  json: {\n    correo: cliente.email,\n    asunto: `Nota de cobro ${cobro.numero} · ${obra.nombre} · ${periodo}`,\n    html: `<p>Estimado/a ${esc(nombre)}: le enviamos la nota de cobro ${esc(cobro.numero)} por la planilla N.º ${planilla.numero} de ${periodo} de la obra ${esc(obra.nombre)}.</p>`\n      + `<p>Neto a cobrar: ${bs(cobro.montoNeto)}. Vence el ${fecha(cobro.venceEn)}.</p>`,\n    // Cuerpo de POST /cobros/{id}/nota-cobro: Finanzas comprueba que coincida con el cobro\n    nota: {\n      cliente: { nombre },\n      obra: { id: obra.id, nombre: obra.nombre },\n      planilla: {\n        id: planilla.id,\n        numero: planilla.numero,\n        periodo: planilla.periodo,\n        lineas: planilla.lineas.map((l) => ({\n          codigo: l.codigo, nombre: l.nombre, unidad: l.unidad,\n          cantidadPeriodo: l.cantidadPeriodo, precioUnitario: l.precioUnitario, monto: l.monto,\n        })),\n        subtotal: planilla.subtotal,\n        descuentoAnticipo: planilla.descuentoAnticipo,\n        retencion: planilla.retencion,\n        neto: planilla.neto,\n        anticipoPct: planilla.anticipoPct,\n        retencionPct: planilla.retencionPct,\n      },\n    },\n  },\n};\n"
+      },
+      "id": "c966786c-3bb7-5c57-9d37-2bf6c662c5c0",
+      "name": "Armar nota",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FINANZAS_URL }}/cobros/{{ $('Leer cobro').item.json.id }}/nota-cobro",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.nota) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "366addf7-243a-5c4b-b537-e359d104e93d",
+      "name": "Generar nota de cobro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMPRESA_NOMBRE }} <{{ $env.COBRANZA_REMITENTE }}>",
+        "toEmail": "={{ $('Armar nota').item.json.correo }}",
+        "subject": "={{ $('Armar nota').item.json.asunto }}",
+        "emailFormat": "html",
+        "html": "={{ $('Armar nota').item.json.html }}<p>{{ $env.EMPRESA_NOMBRE }}</p>",
+        "options": {
+          "appendAttribution": false,
+          "bccEmail": "={{ $env.COBRANZA_CORREO }}",
+          "fileAttachments": "data"
+        }
+      },
+      "id": "b2e5f48b-0681-5de7-98e5-c502a891badc",
+      "name": "Enviar nota",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1980,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "cred201Mailpit01",
+          "name": "SMTP"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FINANZAS_URL }}/cobros/{{ $('Leer cobro').item.json.id }}/envios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tipo: 'NOTA_COBRO', destinatario: $('Armar nota').item.json.correo, ejecucionN8n: $execution.id }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "3264f54a-9505-57ca-97dd-15d68ebef537",
+      "name": "Anotar envío",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Cobro emitido": {
+      "main": [
+        [
+          {
+            "node": "Leer cobro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer cobro": {
+      "main": [
+        [
+          {
+            "node": "¿Nota ya enviada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Nota ya enviada?": {
+      "main": [
+        [
+          {
+            "node": "Ya enviada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer planilla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer planilla": {
+      "main": [
+        [
+          {
+            "node": "Leer obra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer obra": {
+      "main": [
+        [
+          {
+            "node": "Leer cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene correo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene correo?": {
+      "main": [
+        [
+          {
+            "node": "Armar nota",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sin correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar nota": {
+      "main": [
+        [
+          {
+            "node": "Generar nota de cobro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar nota de cobro": {
+      "main": [
+        [
+          {
+            "node": "Enviar nota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar nota": {
+      "main": [
+        [
+          {
+            "node": "Anotar envío",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/La_Paz",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": []
+}

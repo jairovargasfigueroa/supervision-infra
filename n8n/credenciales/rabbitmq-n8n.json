@@ -1,0 +1,13 @@
+{
+  "id": "cred201RabbitMQ1",
+  "name": "RabbitMQ · usuario n8n",
+  "type": "rabbitmq",
+  "data": {
+    "hostname": "rabbitmq",
+    "port": 5672,
+    "username": "n8n",
+    "password": "",
+    "vhost": "/",
+    "ssl": false
+  }
+}

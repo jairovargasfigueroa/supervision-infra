@@ -1,0 +1,57 @@
+# 601 · Caddy del grupo «azure» (hace de la nube de Azure): HTTPS en el 8443 de la máquina con la CA local.
+# Publica Keycloak, el gateway, Obras, Finanzas, n8n, Mailpit, el panel de RabbitMQ y los 5 frontends compilados
+# (carpetas de /sitios, las escribe publicar-frontends). Direcciones: https://<pieza>.azure.localhost:8443
+{
+	https_port 8443
+	import /etc/caddy/global.caddy
+}
+
+import /etc/caddy/comun.caddy
+
+keycloak.azure.localhost {
+	import servicio keycloak:8080
+}
+
+gateway.azure.localhost {
+	import servicio gateway:4000
+}
+
+obras.azure.localhost {
+	import servicio obras:8081
+}
+
+finanzas.azure.localhost {
+	import servicio finanzas-api:8083
+}
+
+n8n.azure.localhost {
+	import servicio n8n:5678
+}
+
+mailpit.azure.localhost {
+	import servicio mailpit:8025
+}
+
+rabbitmq.azure.localhost {
+	import servicio rabbitmq:15672
+}
+
+erp.azure.localhost {
+	import estatico erp-shell
+}
+
+mf-obras.azure.localhost {
+	import remoto mf-obras
+}
+
+mf-materiales.azure.localhost {
+	import remoto mf-materiales
+}
+
+mf-supervision.azure.localhost {
+	import remoto mf-supervision
+}
+
+portal.azure.localhost {
+	import estatico portal
+}

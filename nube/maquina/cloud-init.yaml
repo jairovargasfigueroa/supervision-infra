@@ -1,0 +1,52 @@
+#cloud-config
+# 602 · Primera configuración de cada máquina (Azure, AWS y Google; Ubuntu 24.04 LTS). La pasa «nube.mjs crear» como
+# custom data / user data. Instala Docker Engine y su plugin de Compose del repositorio oficial de Docker, deja la
+# rotación de registros, el swap, el usuario supervision en el grupo docker, la carpeta /opt/supervision y el timer
+# que renueva la copia del certificado de RabbitMQ (solo hace algo en la máquina de Azure).
+# __USUARIO__ (nube.mjs pone aquí el usuario supervision con la clave SSH en AWS y Google; en Azure lo crea az vm create)
+
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}}
+  - path: /etc/systemd/system/certificado-rabbitmq.service
+    content: |
+      [Unit]
+      Description=Copia el certificado de Let's Encrypt de rabbitmq.<dominio> para AMQPS (602)
+      ConditionPathExists=/opt/supervision/nube/maquina/certificado-rabbitmq.sh
+      After=docker.service
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh /opt/supervision/nube/maquina/certificado-rabbitmq.sh
+  - path: /etc/systemd/system/certificado-rabbitmq.timer
+    content: |
+      [Unit]
+      Description=Revisa una vez al día el certificado de RabbitMQ (602)
+      [Timer]
+      OnBootSec=5min
+      OnUnitActiveSec=1d
+      [Install]
+      WantedBy=timers.target
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - sh -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list'
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - usermod -aG docker supervision
+  - install -d -o supervision -g supervision -m 0755 /opt/supervision
+  - systemctl enable --now docker
+  - systemctl daemon-reload
+  - systemctl enable --now certificado-rabbitmq.timer

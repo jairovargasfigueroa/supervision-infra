@@ -1,0 +1,353 @@
+# 602 · Nube de Azure (vm-plataforma): el grupo «azure» del ensayo local (../produccion-local/compose.azure.yml) con
+# las direcciones reales, certificados de Let's Encrypt (Caddy) y las imágenes de GHCR. Variables: el .env que
+# «nube.mjs desplegar azure» copia a la máquina (solo las de este archivo). Cambios respecto del ensayo: README.
+# Los nombres de las piezas de esta máquina apuntan a su propio Caddy (host-gateway): las llamadas entre ellas usan el
+# mismo nombre y certificado sin salir a internet. Los de Google y AWS se resuelven por DNS público.
+name: supervision-azure
+
+x-nombres-propios: &nombres-propios
+  - "keycloak.${DOMINIO}:host-gateway"
+  - "rabbitmq.${DOMINIO}:host-gateway"
+  - "gateway.${DOMINIO}:host-gateway"
+  - "obras.${DOMINIO}:host-gateway"
+  - "finanzas.${DOMINIO}:host-gateway"
+
+x-registros: &registros
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
+
+# Finanzas: la misma imagen para la API y los procesos en segundo plano (cambia el comando)
+x-finanzas: &finanzas
+  image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-ms-finanzas:${FINANZAS_ETIQUETA:-${IMAGEN_ETIQUETA:-main}}
+  extra_hosts: *nombres-propios
+  logging: *registros
+  environment:
+    APP_NAME: Finanzas
+    APP_ENV: production
+    APP_DEBUG: "false"
+    APP_KEY: ${FINANZAS_APP_KEY:?falta FINANZAS_APP_KEY en .env}
+    APP_URL: ${FINANZAS_URL}
+    APP_TIMEZONE: America/La_Paz
+    PORT: "8083"
+    LOG_CHANNEL: stderr
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_DATABASE: finanzas_db
+    DB_USERNAME: finanzas
+    DB_PASSWORD: ${POSTGRES_FINANZAS_CLAVE:?falta POSTGRES_FINANZAS_CLAVE en .env}
+    # Red interna de la máquina (la base no tiene puerto público)
+    DB_SSLMODE: disable
+    RABBITMQ_HOST: ${RABBITMQ_HOST}
+    RABBITMQ_PORT: ${RABBITMQ_PUERTO_TLS}
+    RABBITMQ_USER: finanzas
+    RABBITMQ_PASSWORD: ${RABBITMQ_FINANZAS_CLAVE:?falta RABBITMQ_FINANZAS_CLAVE en .env}
+    RABBITMQ_SSL: "true"
+    KEYCLOAK_ISSUER: ${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}
+    KEYCLOAK_AUDIENCIA: plataforma-api
+    EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
+
+services:
+  # PostgreSQL de Obras, Finanzas y Keycloak, sin puerto en la máquina (los mismos usuarios y bases que el ensayo)
+  postgres:
+    image: postgres:17
+    logging: *registros
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
+      POSTGRES_OBRAS_CLAVE: ${POSTGRES_OBRAS_CLAVE:?falta POSTGRES_OBRAS_CLAVE en .env}
+      POSTGRES_FINANZAS_CLAVE: ${POSTGRES_FINANZAS_CLAVE:?falta POSTGRES_FINANZAS_CLAVE en .env}
+      POSTGRES_KEYCLOAK_CLAVE: ${POSTGRES_KEYCLOAK_CLAVE:?falta POSTGRES_KEYCLOAK_CLAVE en .env}
+    volumes:
+      - ../produccion-local/postgres/iniciar-azure.sh:/docker-entrypoint-initdb.d/01-bases.sh:ro
+      - datos-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d keycloak_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  # RabbitMQ con AMQPS en 5671 (público, para los servicios de las tres nubes) con el certificado de Let's Encrypt
+  # que Caddy saca para rabbitmq.<dominio> (maquina/certificado-rabbitmq.sh lo copia a ./certificados); 5672 solo
+  # para n8n, en la red interna
+  rabbitmq:
+    image: rabbitmq:4.4-management
+    hostname: rabbitmq
+    logging: *registros
+    ports:
+      - "5671:5671"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USUARIO:?falta RABBITMQ_ADMIN_USUARIO en .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_CLAVE:?falta RABBITMQ_ADMIN_CLAVE en .env}
+    volumes:
+      - ./rabbitmq/tls.conf:/etc/rabbitmq/conf.d/20-tls.conf:ro
+      - ./certificados:/certificados:ro
+      - datos-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # Las mismas definiciones y usuarios que en desarrollo (../rabbitmq), con las contraseñas de este .env
+  rabbitmq-init:
+    image: curlimages/curl:8.17.0
+    logging: *registros
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: http://rabbitmq:15672
+      RABBITMQ_ADMIN_USUARIO: ${RABBITMQ_ADMIN_USUARIO}
+      RABBITMQ_ADMIN_CLAVE: ${RABBITMQ_ADMIN_CLAVE}
+      RABBITMQ_OBRAS_CLAVE: ${RABBITMQ_OBRAS_CLAVE:?falta RABBITMQ_OBRAS_CLAVE en .env}
+      RABBITMQ_MATERIALES_CLAVE: ${RABBITMQ_MATERIALES_CLAVE:?falta RABBITMQ_MATERIALES_CLAVE en .env}
+      RABBITMQ_FINANZAS_CLAVE: ${RABBITMQ_FINANZAS_CLAVE:?falta RABBITMQ_FINANZAS_CLAVE en .env}
+      RABBITMQ_IA_CLAVE: ${RABBITMQ_IA_CLAVE:?falta RABBITMQ_IA_CLAVE en .env}
+      RABBITMQ_N8N_CLAVE: ${RABBITMQ_N8N_CLAVE:?falta RABBITMQ_N8N_CLAVE en .env}
+    volumes:
+      - ../rabbitmq/iniciar.sh:/iniciar.sh:ro
+      - ../rabbitmq/definiciones.json:/definiciones.json:ro
+    entrypoint: ["sh", "/iniciar.sh"]
+    restart: "no"
+
+  # Keycloak en modo producción con su base en PostgreSQL, detrás de Caddy. KC_HOSTNAME fija la dirección pública:
+  # el emisor de los tokens es siempre KEYCLOAK_URL/realms/supervision. Importa el realm solo si no existe; toma de
+  # aquí las direcciones, la contraseña de los usuarios de prueba, el correo de cliente1 y los secretos de los clientes.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start", "--import-realm"]
+    logging: *registros
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USUARIO:?falta KEYCLOAK_ADMIN_USUARIO en .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_CLAVE:?falta KEYCLOAK_ADMIN_CLAVE en .env}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${POSTGRES_KEYCLOAK_CLAVE}
+      KC_HOSTNAME: ${KEYCLOAK_URL}
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_PORT: "8080"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      ERP_URL: ${ERP_URL}
+      PORTAL_URL: ${PORTAL_URL}
+      USUARIOS_PRUEBA_CLAVE: ${USUARIOS_PRUEBA_CLAVE:?falta USUARIOS_PRUEBA_CLAVE en .env}
+      CLIENTE1_CORREO: ${CLIENTE1_CORREO:-cliente1@correo.test}
+      KEYCLOAK_GATEWAY_CLIENT_SECRET: ${KEYCLOAK_GATEWAY_CLIENT_SECRET:?falta KEYCLOAK_GATEWAY_CLIENT_SECRET en .env}
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
+      IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET:?falta IA_AGENTES_CLIENT_SECRET en .env}
+      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO:?falta N8N_KEYCLOAK_SECRETO en .env}
+    volumes:
+      - ../keycloak/realm-supervision.json:/opt/keycloak/data/import/realm-supervision.json:ro
+      - ../keycloak/temas/supervision:/opt/keycloak/themes/supervision:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+  obras:
+    image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-ms-obras:${OBRAS_ETIQUETA:-${IMAGEN_ETIQUETA:-main}}
+    extra_hosts: *nombres-propios
+    logging: *registros
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      OBRAS_PORT: "8081"
+      OBRAS_DB_HOST: postgres
+      OBRAS_DB_PORT: "5432"
+      OBRAS_DB_NAME: obras_db
+      OBRAS_DB_USER: obras
+      OBRAS_DB_PASSWORD: ${POSTGRES_OBRAS_CLAVE}
+      OBRAS_DB_SSLMODE: disable
+      OBRAS_KEYCLOAK_ISSUER: ${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}
+      OBRAS_RABBITMQ_HOST: ${RABBITMQ_HOST}
+      OBRAS_RABBITMQ_PORT: ${RABBITMQ_PUERTO_TLS}
+      OBRAS_RABBITMQ_USER: obras
+      OBRAS_RABBITMQ_PASSWORD: ${RABBITMQ_OBRAS_CLAVE}
+      OBRAS_RABBITMQ_SSL: "true"
+      # Amazon S3 (sin endpoint), con el usuario IAM obras-s3 (solo fotos/)
+      OBRAS_S3_ENDPOINT: ""
+      OBRAS_S3_REGION: ${AWS_REGION:-us-east-2}
+      OBRAS_S3_BUCKET: ${S3_BUCKET:?falta S3_BUCKET en .env}
+      OBRAS_S3_ACCESS_KEY: ${OBRAS_S3_ACCESS_KEY:?falta OBRAS_S3_ACCESS_KEY en .env (crear aws --datos)}
+      OBRAS_S3_SECRET_KEY: ${OBRAS_S3_SECRET_KEY:?falta OBRAS_S3_SECRET_KEY en .env (crear aws --datos)}
+      OBRAS_CORS_ORIGENES: ${PORTAL_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  finanzas-api:
+    <<: *finanzas
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  # Consumidor, publicador del outbox y tareas programadas de Finanzas: la misma imagen con otro comando, una réplica.
+  # Si uno de los tres termina, el contenedor se reinicia entero.
+  finanzas-trabajos:
+    <<: *finanzas
+    command:
+      - sh
+      - -c
+      - >-
+        php artisan mensajeria:consumir & c=$$!;
+        php artisan mensajeria:publicar & p=$$!;
+        php artisan schedule:work & s=$$!;
+        while kill -0 $$c 2>/dev/null && kill -0 $$p 2>/dev/null && kill -0 $$s 2>/dev/null; do sleep 5; done;
+        echo "un proceso de finanzas-trabajos terminó; se reinicia el contenedor" >&2; exit 1
+    healthcheck:
+      disable: true
+    depends_on:
+      finanzas-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gateway:
+    image: ${IMAGENES:-ghcr.io/jairovargasfigueroa}/supervision-gateway:${GATEWAY_ETIQUETA:-${IMAGEN_ETIQUETA:-main}}
+    extra_hosts: *nombres-propios
+    logging: *registros
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      OBRAS_URL: ${OBRAS_URL}
+      MATERIALES_URL: ${MATERIALES_URL}
+      FINANZAS_URL: ${FINANZAS_URL}
+      IA_URL: ${IA_URL}
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_GATEWAY_CLIENT_ID: gateway
+      KEYCLOAK_GATEWAY_CLIENT_SECRET: ${KEYCLOAK_GATEWAY_CLIENT_SECRET}
+      # Los microfrontends corren dentro de la página del shell: solo su origen
+      CORS_ORIGENES: ${ERP_URL}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  # 201 y 010 · Los mismos flujos y credenciales que en desarrollo (../n8n). Keycloak por la red interna (reenvío de
+  # localhost:8080 a keycloak:8080; el emisor del token es KC_HOSTNAME igual); Obras y Finanzas por su nombre público
+  # (Caddy de esta máquina) y Materiales por el de Google; RabbitMQ y Mailpit por la red interna. El correo sale por
+  # SMTP_* (el Gmail de la plataforma; vacías, Mailpit) y el push por Firebase si están sus tres variables.
+  n8n:
+    image: n8nio/n8n:2.43.7
+    entrypoint: ["tini", "--", "sh", "/n8n-config/iniciar.sh"]
+    extra_hosts: *nombres-propios
+    logging: *registros
+    environment:
+      GENERIC_TIMEZONE: America/La_Paz
+      TZ: America/La_Paz
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?falta N8N_ENCRYPTION_KEY en .env}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_PROPIETARIO_CORREO:?falta N8N_PROPIETARIO_CORREO en .env}
+      N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_PROPIETARIO_CLAVE_HASH:?falta N8N_PROPIETARIO_CLAVE_HASH en .env}
+      N8N_INSTANCE_OWNER_FIRST_NAME: Administración
+      N8N_INSTANCE_OWNER_LAST_NAME: Cobranzas
+      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO}
+      RABBITMQ_N8N_CLAVE: ${RABBITMQ_N8N_CLAVE}
+      FINANZAS_URL: ${FINANZAS_URL}
+      OBRAS_URL: ${OBRAS_URL}
+      MATERIALES_URL: ${MATERIALES_URL}
+      KEYCLOAK_URL: http://localhost:8080
+      EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
+      COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:-cobranzas@constructora-andina.test}
+      COBRANZA_CORREO: ${COBRANZA_CORREO:-cobranzas@constructora-andina.test}
+      PORTAL_URL: ${PORTAL_URL}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PUERTO: ${SMTP_PUERTO:-}
+      SMTP_SEGURO: ${SMTP_SEGURO:-}
+      SMTP_USUARIO: ${SMTP_USUARIO:-}
+      SMTP_CLAVE: ${SMTP_CLAVE:-}
+      FIREBASE_PROYECTO_ID: ${FIREBASE_PROYECTO_ID:-}
+      FIREBASE_CUENTA_CORREO: ${FIREBASE_CUENTA_CORREO:-}
+      FIREBASE_CLAVE_PRIVADA: ${FIREBASE_CLAVE_PRIVADA:-}
+      REENVIO_KEYCLOAK_HOST: keycloak
+      REENVIO_KEYCLOAK_PUERTO: "8080"
+    volumes:
+      - ../n8n:/n8n-config:ro
+      - datos-n8n:/home/node/.n8n
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5678/healthz/readiness').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
+    restart: unless-stopped
+
+  # Buzón de respaldo: SMTP en mailpit:1025 dentro de la máquina (si SMTP_* está vacío); interfaz y API por Caddy,
+  # con autenticación básica
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    logging: *registros
+    environment:
+      TZ: America/La_Paz
+      MP_DISABLE_VERSION_CHECK: "true"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  # HTTPS (80 y 443) con certificados de Let's Encrypt por nombre; además sirve los 5 frontends compilados (sitios/,
+  # los copia «nube.mjs desplegar azure»). ./datos/caddy guarda los certificados (de ahí sale el de RabbitMQ).
+  caddy:
+    image: caddy:2.11.7-alpine
+    logging: *registros
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:?falta DOMINIO en .env}
+      ACME_CORREO: ${ACME_CORREO:?falta ACME_CORREO en .env}
+      ERP_URL: ${ERP_URL}
+      MAILPIT_USUARIO: ${MAILPIT_USUARIO:?falta MAILPIT_USUARIO en .env}
+      MAILPIT_CLAVE_HASH: ${MAILPIT_CLAVE_HASH:?falta MAILPIT_CLAVE_HASH en .env}
+    volumes:
+      - ./caddy/Caddyfile.azure:/etc/caddy/Caddyfile:ro
+      - ../produccion-local/caddy/comun.caddy:/etc/caddy/comun.caddy:ro
+      - ./sitios:/sitios:ro
+      - ./datos/caddy:/data
+    restart: unless-stopped
+
+volumes:
+  datos-postgres:
+  datos-rabbitmq:
+  datos-n8n:

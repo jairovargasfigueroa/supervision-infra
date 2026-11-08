@@ -26,15 +26,19 @@
     "evento.obras.PlanillaAprobada",
     "evento.obras.PlanillaObservada",
     "evento.finanzas.CobroEmitido",
-    "evento.materiales.MovimientoRegistrado"
+    "evento.materiales.MovimientoRegistrado",
+    "evento.finanzas.CobroPagado"
   ],
-  "notificaciones": [
-    "evento.obras.ObraRegistrada",
-    "evento.obras.PlanillaPresentada",
-    "evento.obras.PlanillaAprobada",
-    "evento.obras.PlanillaObservada",
-    "evento.materiales.StockBajo",
-    "evento.finanzas.CobroVencido",
-    "evento.finanzas.ContratoRechazado"
+  "n8n.cobro-emitido": [
+    "evento.finanzas.CobroEmitido"
+  ],
+  "n8n.cobro-pagado": [
+    "evento.finanzas.CobroPagado"
+  ],
+  "n8n.stock-bajo": [
+    "evento.materiales.StockBajo"
+  ],
+  "n8n.planilla-presentada": [
+    "evento.obras.PlanillaPresentada"
   ]
 }

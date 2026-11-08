@@ -1,0 +1,467 @@
+{
+  "id": "avi010Planilla00",
+  "name": "Avisar planilla para revisar",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "queue": "n8n.planilla-presentada",
+        "options": {
+          "acknowledge": "executionFinishes",
+          "assertQueue": false,
+          "jsonParseBody": true,
+          "onlyContent": true,
+          "parallelMessages": 1
+        }
+      },
+      "id": "217d6586-efa0-58fa-b51b-455929330d9c",
+      "name": "Planilla presentada",
+      "type": "n8n-nodes-base.rabbitmqTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "credentials": {
+        "rabbitmq": {
+          "id": "cred201RabbitMQ1",
+          "name": "RabbitMQ · usuario n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ¿Este aviso (id del sobre) ya se envió? Los datos estáticos solo se guardan en ejecuciones del flujo publicado\nconst avisos = $getWorkflowStaticData('global').avisos ?? [];\nreturn { json: { ...$json, repetido: avisos.includes($json.id) } };\n"
+      },
+      "id": "b0872942-d41a-59b8-bd9d-d8fa5b557789",
+      "name": "Revisar repetido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0b873330-e9e1-52f8-8b32-6e8e4e94dd08",
+              "leftValue": "={{ $json.repetido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f55dba78-bccb-5059-b82f-0beba6cf1e38",
+      "name": "¿Ya avisado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "13604d4e-a9dc-5889-a6b7-06fa29c0978f",
+      "name": "Ya avisado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OBRAS_URL }}/planillas/{{ $('Planilla presentada').first().json.datos.planillaId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "7daf4fe7-d91a-577c-a900-78c38afc662a",
+      "name": "Leer planilla",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e54d682b-c859-5bd5-a995-93ff21aec5d0",
+              "leftValue": "={{ $json.estado === 'PRESENTADA' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "26a0d5e7-e812-5bb6-bba3-38caefd58f36",
+      "name": "¿Sigue presentada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Anota el id del sobre como enviado (los últimos 500) para descartar el mismo aviso si vuelve a llegar\nconst datos = $getWorkflowStaticData('global');\nconst id = $('Planilla presentada').first().json.id;\ndatos.avisos = [...(datos.avisos ?? []).filter((visto) => visto !== id), id].slice(-500);\nreturn [{ json: { id, anotado: true, avisosGuardados: datos.avisos.length } }];\n"
+      },
+      "id": "d87537ed-acf9-5656-818b-a43926ec1c79",
+      "name": "Anotar ya revisada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OBRAS_URL }}/obras/{{ $('Leer planilla').first().json.obraId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "ec578711-07a5-597a-a1d3-3d5bfe32498d",
+      "name": "Leer obra",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.KEYCLOAK_URL }}/admin/realms/supervision/users/{{ $json.asignaciones.clienteId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "eb2ffb46-ed13-5b92-9111-6f40271b6b6a",
+      "name": "Leer cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1af8fc9-c284-552a-8da4-f2df8340b5d1",
+              "leftValue": "={{ Boolean($json.email) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3786d966-653a-5d0c-8753-aea32220fd80",
+      "name": "¿Tiene correo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "El cliente no tiene correo registrado"
+      },
+      "id": "9db73421-7e79-5e8d-9ed8-eda83ff77206",
+      "name": "Sin correo",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];\nconst bs = (n) => 'Bs ' + Number(n).toFixed(2).replace('.', ',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\nconst fecha = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/');\nconst periodoTexto = (p) => { const [anio, mes] = String(p).split('-'); return `${MESES[Number(mes) - 1]} ${anio}`; };\nconst esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst nombreDe = (u) => [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username;\n\nconst { reenvio } = $('Planilla presentada').first().json.datos;\nconst planilla = $('Leer planilla').first().json;\nconst obra = $('Leer obra').first().json;\nconst cliente = $('Leer cliente').first().json;\nconst periodo = periodoTexto(planilla.periodo);\nreturn {\n  json: {\n    planillaId: planilla.id,\n    correo: cliente.email,\n    asunto: `${reenvio ? 'Planilla corregida para revisar' : 'Planilla para revisar'}: N.º ${planilla.numero} · ${obra.nombre} · ${periodo}`,\n    html: `<p>Estimado/a ${esc(nombreDe(cliente))}: le presentamos la planilla N.º ${planilla.numero} de ${periodo} de la obra ${esc(obra.nombre)}, con un neto de ${bs(planilla.neto)}.</p>`\n  },\n};\n"
+      },
+      "id": "5dfb54c7-60fd-541d-8941-9aa0f8ddf789",
+      "name": "Armar correo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMPRESA_NOMBRE }} <{{ $env.COBRANZA_REMITENTE }}>",
+        "toEmail": "={{ $json.correo }}",
+        "subject": "={{ $json.asunto }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}<p>Puede revisarla y aprobarla u observarla en el portal: <a href=\"{{ $env.PORTAL_URL }}/planillas/{{ $json.planillaId }}\">{{ $env.PORTAL_URL }}/planillas/{{ $json.planillaId }}</a>.</p><p>{{ $env.EMPRESA_NOMBRE }}</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "423be591-2345-5027-b272-42016c381904",
+      "name": "Enviar correo",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1980,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "cred201Mailpit01",
+          "name": "SMTP"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Anota el id del sobre como enviado (los últimos 500) para descartar el mismo aviso si vuelve a llegar\nconst datos = $getWorkflowStaticData('global');\nconst id = $('Planilla presentada').first().json.id;\ndatos.avisos = [...(datos.avisos ?? []).filter((visto) => visto !== id), id].slice(-500);\nreturn [{ json: { id, anotado: true, avisosGuardados: datos.avisos.length } }];\n"
+      },
+      "id": "0e7cfb96-9002-5d9e-82a8-8d19a3e131fe",
+      "name": "Anotar aviso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Planilla presentada": {
+      "main": [
+        [
+          {
+            "node": "Revisar repetido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revisar repetido": {
+      "main": [
+        [
+          {
+            "node": "¿Ya avisado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Ya avisado?": {
+      "main": [
+        [
+          {
+            "node": "Ya avisado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer planilla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer planilla": {
+      "main": [
+        [
+          {
+            "node": "¿Sigue presentada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Sigue presentada?": {
+      "main": [
+        [
+          {
+            "node": "Leer obra",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anotar ya revisada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer obra": {
+      "main": [
+        [
+          {
+            "node": "Leer cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene correo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene correo?": {
+      "main": [
+        [
+          {
+            "node": "Armar correo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sin correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar correo": {
+      "main": [
+        [
+          {
+            "node": "Enviar correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar correo": {
+      "main": [
+        [
+          {
+            "node": "Anotar aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/La_Paz",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": []
+}

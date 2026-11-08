@@ -2,7 +2,7 @@
 // Lee las credenciales de .env. Sale con código 1 si alguna comprobación falla.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { leerToken, obtenerTokenUsuario } from './token-usuario.mjs';
+import { leerToken, obtenerTokensUsuario, obtenerTokenUsuario } from './token-usuario.mjs';
 
 const env = Object.fromEntries(
   readFileSync(fileURLToPath(new URL('../.env', import.meta.url)), 'utf8')
@@ -13,7 +13,8 @@ const env = Object.fromEntries(
 
 const RABBITMQ = 'http://localhost:15672/api';
 const KEYCLOAK = 'http://localhost:8080';
-const SERVICIOS_RABBITMQ = ['obras', 'materiales', 'finanzas', 'ia', 'notificaciones'];
+const DYNAMODB = 'http://localhost:8000';
+const SERVICIOS_RABBITMQ = ['obras', 'materiales', 'finanzas', 'ia'];
 
 const autorizacionRabbit =
   'Basic ' + Buffer.from(`${env.RABBITMQ_ADMIN_USUARIO}:${env.RABBITMQ_ADMIN_CLAVE}`).toString('base64');
@@ -26,6 +27,38 @@ async function rabbit(ruta) {
 
 const pruebas = [];
 const prueba = (nombre, fn) => pruebas.push({ nombre, fn });
+const avisos = [];
+
+// Una cola con mensajes guardados (por ejemplo, ia con el servicio de IA apagado, criterio 13 de la 401) o con
+// consumidores no se usa para mensajes de prueba: sacarlos con /get descartaría también los mensajes reales.
+async function colasOcupadas(colas) {
+  const ocupadas = [];
+  for (const cola of colas) {
+    const datos = await rabbit(`/queues/%2F/${encodeURIComponent(cola)}`);
+    if ((datos.messages ?? 0) > 0 || (datos.consumers ?? 0) > 0) {
+      ocupadas.push(`${cola} (${datos.messages ?? 0} mensajes, ${datos.consumers ?? 0} consumidores)`);
+    }
+  }
+  return ocupadas;
+}
+
+async function publicarPrueba(clave, payload) {
+  const respuesta = await fetch(`${RABBITMQ}/exchanges/%2F/plataforma/publish`, {
+    method: 'POST',
+    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
+    body: JSON.stringify({ properties: { delivery_mode: 2 }, routing_key: clave, payload, payload_encoding: 'string' }),
+  });
+  return (await respuesta.json()).routed;
+}
+
+async function sacarMensajes(cola) {
+  const sacar = await fetch(`${RABBITMQ}/queues/%2F/${cola}/get`, {
+    method: 'POST',
+    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
+    body: JSON.stringify({ count: 10, ackmode: 'ack_requeue_false', encoding: 'auto' }),
+  });
+  return sacar.json();
+}
 function afirmar(condicion, mensaje) {
   if (!condicion) throw new Error(mensaje);
 }
@@ -43,8 +76,20 @@ prueba('RabbitMQ: hay un usuario por servicio con permisos en el vhost "/"', asy
   }
 });
 
+prueba('RabbitMQ: el usuario n8n (201 y 010) solo puede leer sus cuatro colas', async () => {
+  if (!env.RABBITMQ_N8N_CLAVE) {
+    avisos.push('sin RABBITMQ_N8N_CLAVE en .env: no se comprobó el usuario n8n (perfil automatizacion, 201)');
+    return;
+  }
+  const permisos = await rabbit('/users/n8n/permissions');
+  afirmar(
+    permisos.some((p) => p.vhost === '/' && p.configure === '^$' && p.write === '^$' && p.read === String.raw`^n8n\.(cobro-emitido|cobro-pagado|stock-bajo|planilla-presentada)$`),
+    `permisos de n8n: ${JSON.stringify(permisos)}`,
+  );
+});
+
 // --- RabbitMQ: exchange, colas y enlaces (1.5) ---
-// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401 y 010).
+// pruebas/enlaces.json es la lista esperada por cola (docs/contratos/eventos.md, 401, 201 y 010).
 const ENLACES = JSON.parse(readFileSync(fileURLToPath(new URL('./enlaces.json', import.meta.url)), 'utf8'));
 
 prueba('RabbitMQ: exchange plataforma (topic, durable) y colas durables', async () => {
@@ -66,33 +111,56 @@ prueba('RabbitMQ: cada cola tiene exactamente sus enlaces', async () => {
   }
 });
 
-prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales, ia y notificaciones', async () => {
-  const respuesta = await fetch(`${RABBITMQ}/exchanges/%2F/plataforma/publish`, {
-    method: 'POST',
-    headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      properties: {},
-      routing_key: 'evento.obras.ObraRegistrada',
-      payload: '{"prueba":"humo"}',
-      payload_encoding: 'string',
-    }),
-  });
-  const { routed } = await respuesta.json();
-  afirmar(routed, 'el mensaje no llegó a ninguna cola');
-  // Saca el mensaje de prueba de cada cola para no dejar basura
+// 010 · Los avisos viejos no se acumulan sin fin si n8n no corre o los flujos de push no están publicados (sin Firebase)
+const TTL_N8N = { 'n8n.stock-bajo': 86400000, 'n8n.planilla-presentada': 604800000 };
+
+prueba('RabbitMQ: los avisos de la 010 vencen en sus colas (stock bajo 1 día, planilla presentada 7 días)', async () => {
+  for (const [cola, ttl] of Object.entries(TTL_N8N)) {
+    const datos = await rabbit(`/queues/%2F/${encodeURIComponent(cola)}`);
+    afirmar(
+      datos.effective_policy_definition?.['message-ttl'] === ttl,
+      `${cola}: política ${datos.policy ?? 'ninguna'} con ${JSON.stringify(datos.effective_policy_definition ?? {})}, se esperaba message-ttl ${ttl}`,
+    );
+    afirmar(!datos.arguments?.['x-message-ttl'], `${cola}: el TTL va por política, no en los argumentos de la cola`);
+  }
+});
+
+prueba('RabbitMQ: un ObraRegistrada publicado llega a finanzas, materiales e ia', async () => {
   const destinos = Object.entries(ENLACES)
     .filter(([, claves]) => claves.includes('evento.obras.ObraRegistrada'))
     .map(([cola]) => cola);
-  afirmar(destinos.sort().join() === 'finanzas,ia,materiales,notificaciones', `destinos: ${destinos}`);
+  afirmar(destinos.sort().join() === 'finanzas,ia,materiales', `destinos: ${destinos}`);
+  const ocupadas = await colasOcupadas(destinos);
+  if (ocupadas.length) {
+    avisos.push(`no se publicó el ObraRegistrada de prueba: colas en uso o con mensajes guardados: ${ocupadas.join(', ')}`);
+    return;
+  }
+  afirmar(await publicarPrueba('evento.obras.ObraRegistrada', '{"prueba":"humo"}'), 'el mensaje no llegó a ninguna cola');
+  // Saca el mensaje de prueba de cada cola para no dejar basura
   for (const cola of destinos) {
-    const sacar = await fetch(`${RABBITMQ}/queues/%2F/${cola}/get`, {
-      method: 'POST',
-      headers: { authorization: autorizacionRabbit, 'content-type': 'application/json' },
-      body: JSON.stringify({ count: 10, ackmode: 'ack_requeue_false', encoding: 'auto' }),
-    });
-    const mensajes = await sacar.json();
+    const mensajes = await sacarMensajes(cola);
     afirmar(mensajes.some((m) => m.payload === '{"prueba":"humo"}'), `no llegó a la cola ${cola}`);
   }
+});
+
+prueba('RabbitMQ: la cola ia guarda los eventos mientras el servicio de IA está apagado (401, criterio 13)', async () => {
+  const ocupadas = await colasOcupadas(['ia']);
+  if (ocupadas.length) {
+    avisos.push(`no se probó que ia guarda los eventos: ${ocupadas.join(', ')}; se prueba con IA apagado y la cola vacía`);
+    return;
+  }
+  // MovimientoRegistrado solo lo escucha ia: no llega a ningún otro servicio. Entrega persistente, como los servicios.
+  for (const n of [1, 2]) {
+    afirmar(
+      await publicarPrueba('evento.materiales.MovimientoRegistrado', `{"prueba":"humo-401-${n}"}`),
+      'MovimientoRegistrado no llegó a ninguna cola',
+    );
+  }
+  const guardados = (await sacarMensajes('ia')).map((m) => m.payload);
+  afirmar(
+    ['{"prueba":"humo-401-1"}', '{"prueba":"humo-401-2"}'].every((p) => guardados.includes(p)),
+    `la cola ia guardó [${guardados}]`,
+  );
 });
 
 // --- Keycloak (1.2) ---
@@ -102,17 +170,19 @@ prueba('Keycloak: responde el realm master', async () => {
 });
 
 // --- Realm supervision (1.4) ---
+// docs/datos-prueba.md, sección 3 (011): el id es el sub del token. Orden = sufijo del id.
 const USUARIOS = {
-  admin1: ['admin'],
-  gerente1: ['gerente'],
-  residente1: ['residente'],
-  residente2: ['residente'],
-  maestro1: ['maestro'],
-  almacenero1: ['almacenero'],
-  cliente1: ['cliente'],
-  cliente2: ['cliente'],
-  demo1: ['residente', 'cliente'],
+  admin1: ['admin', 'Carla', 'Méndez Rivero', 'admin1@constructora-andina.test'],
+  gerente1: ['gerente', 'Jorge', 'Antelo Suárez', 'gerente1@constructora-andina.test'],
+  residente1: ['residente', 'Daniela', 'Roca Justiniano', 'residente1@constructora-andina.test'],
+  residente2: ['residente', 'Marcelo', 'Vaca Saucedo', 'residente2@constructora-andina.test'],
+  maestro1: ['maestro', 'Freddy', 'Choque Mamani', 'maestro1@constructora-andina.test'],
+  almacenero1: ['almacenero', 'Rosa', 'Flores Arteaga', 'almacenero1@constructora-andina.test'],
+  cliente1: ['cliente', 'Roberto', 'Justiniano Paz', 'cliente1@correo.test'],
+  cliente2: ['cliente', 'Patricia', 'Saucedo Ribera', 'cliente2@correo.test'],
+  demo1: ['residente,cliente', 'Lucía', 'Paz Antelo', 'demo1@constructora-andina.test'],
 };
+const idUsuario = (indice) => `a0000000-0000-4000-8000-0000000000${String(indice + 1).padStart(2, '0')}`;
 const ROLES = ['admin', 'residente', 'gerente', 'maestro', 'almacenero', 'cliente'];
 
 let tokenAdmin;
@@ -149,9 +219,9 @@ prueba('Realm: español, tema supervision, política de contraseñas y fuerza br
   afirmar(realm.accessTokenLifespan === 300 && realm.ssoSessionMaxLifespan === 36000, 'duración de token o sesión');
 });
 
-prueba('Realm: existen los seis roles', async () => {
+prueba('Realm: existen los seis roles de las personas, agente_ia (501) y automatizacion (201)', async () => {
   const roles = (await adminKeycloak('/roles')).map((r) => r.name);
-  for (const rol of ROLES) afirmar(roles.includes(rol), `falta el rol ${rol}`);
+  for (const rol of [...ROLES, 'agente_ia', 'automatizacion']) afirmar(roles.includes(rol), `falta el rol ${rol}`);
 });
 
 prueba('Realm: clientes públicos erp, portal y app-obra con PKCE S256 y sin direct access grants', async () => {
@@ -163,16 +233,24 @@ prueba('Realm: clientes públicos erp, portal y app-obra con PKCE S256 y sin dir
   }
 });
 
-prueba('Realm: los 9 usuarios de prueba con su id fijo y sus roles', async () => {
-  for (const [indice, [usuario, roles]] of Object.entries(USUARIOS).entries()) {
-    const id = `a0000000-0000-4000-8000-0000000000${String(indice + 1).padStart(2, '0')}`;
+prueba('Realm: los 9 usuarios de prueba con su id fijo, nombre, apellido, correo y roles', async () => {
+  for (const [indice, [usuario, [roles, nombre, apellido, correo]]] of Object.entries(USUARIOS).entries()) {
+    const id = idUsuario(indice);
     const datos = await adminKeycloak(`/users/${id}`);
     afirmar(datos.username === usuario, `${id} es ${datos.username}, se esperaba ${usuario}`);
-    afirmar(datos.firstName && datos.lastName && datos.emailVerified, `${usuario}: nombre o correo`);
+    afirmar(datos.firstName === nombre && datos.lastName === apellido, `${usuario}: ${datos.firstName} ${datos.lastName}`);
+    afirmar(datos.email === correo && datos.emailVerified, `${usuario}: correo ${datos.email}`);
     const asignados = (await adminKeycloak(`/users/${id}/role-mappings/realm`)).map((r) => r.name);
     for (const rol of ROLES) {
-      afirmar(asignados.includes(rol) === roles.includes(rol), `${usuario}: rol ${rol}`);
+      afirmar(asignados.includes(rol) === roles.split(',').includes(rol), `${usuario}: rol ${rol}`);
     }
+  }
+});
+
+prueba('Realm: el sub del token de cada usuario de prueba es su id fijo', async () => {
+  for (const [indice, usuario] of Object.keys(USUARIOS).entries()) {
+    const { sub } = leerToken(await obtenerTokenUsuario(usuario));
+    afirmar(sub === idUsuario(indice), `${usuario}: sub ${sub}, se esperaba ${idUsuario(indice)}`);
   }
 });
 
@@ -204,6 +282,126 @@ prueba('Realm: el cliente gateway obtiene token con audiencia plataforma-api y l
   afirmar(nombres.join() === 'demo1,residente1,residente2', `residentes: ${nombres}`);
 });
 
+prueba('Realm: el cliente ia-reportes (401) solo da client credentials y su token trae gerente y plataforma-api', async () => {
+  const pedir = (cuerpo) =>
+    fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(cuerpo),
+    });
+  afirmar(env.IA_REPORTES_CLIENT_SECRET, 'falta IA_REPORTES_CLIENT_SECRET en .env');
+  const respuesta = await pedir({
+    grant_type: 'client_credentials',
+    client_id: 'ia-reportes',
+    client_secret: env.IA_REPORTES_CLIENT_SECRET,
+  });
+  afirmar(respuesta.ok, `client_credentials de ia-reportes: ${respuesta.status} (¿se recreó Keycloak después de cambiar el secreto?)`);
+  const datos = leerToken((await respuesta.json()).access_token);
+  afirmar(datos.azp === 'ia-reportes', `azp: ${datos.azp}`);
+  afirmar([datos.aud].flat().includes('plataforma-api'), `aud: ${datos.aud}`);
+  afirmar(datos.realm_access?.roles.includes('gerente'), `roles: ${datos.realm_access?.roles}`);
+  afirmar(datos.iss === `${KEYCLOAK}/realms/supervision`, `iss: ${datos.iss}`);
+  // Sin el secreto correcto no hay token, y el cliente no sirve para que una persona inicie sesión
+  afirmar((await pedir({ grant_type: 'client_credentials', client_id: 'ia-reportes', client_secret: 'otro' })).status === 401, 'aceptó un secreto incorrecto');
+  const directo = await pedir({
+    grant_type: 'password',
+    client_id: 'ia-reportes',
+    client_secret: env.IA_REPORTES_CLIENT_SECRET,
+    username: 'gerente1',
+    password: 'Prueba123!',
+  });
+  afirmar(!directo.ok, `aceptó direct access grants: ${directo.status}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=ia-reportes');
+  afirmar(
+    cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
+      cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
+    'flujos del cliente ia-reportes',
+  );
+});
+
+prueba('Realm: el cliente ia-agentes (501) solo da client credentials y su token trae agente_ia y plataforma-api', async () => {
+  const pedir = (cuerpo) =>
+    fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(cuerpo),
+    });
+  afirmar(env.IA_AGENTES_CLIENT_SECRET, 'falta IA_AGENTES_CLIENT_SECRET en .env');
+  const respuesta = await pedir({
+    grant_type: 'client_credentials',
+    client_id: 'ia-agentes',
+    client_secret: env.IA_AGENTES_CLIENT_SECRET,
+  });
+  afirmar(respuesta.ok, `client_credentials de ia-agentes: ${respuesta.status} (¿se recreó Keycloak después de cambiar el secreto?)`);
+  const tokens = await respuesta.json();
+  const datos = leerToken(tokens.access_token);
+  afirmar(datos.azp === 'ia-agentes', `azp: ${datos.azp}`);
+  afirmar([datos.aud].flat().includes('plataforma-api'), `aud: ${datos.aud}`);
+  afirmar(datos.realm_access?.roles.includes('agente_ia'), `roles: ${datos.realm_access?.roles}`);
+  // Solo agente_ia: ningún rol de persona (así ninguna ruta REST lo acepta)
+  for (const rol of ROLES) afirmar(!datos.realm_access?.roles.includes(rol), `trae el rol de persona ${rol}`);
+  afirmar(datos.iss === `${KEYCLOAK}/realms/supervision`, `iss: ${datos.iss}`);
+  afirmar(tokens.expires_in === 300, `expires_in: ${tokens.expires_in}`);
+  afirmar((await pedir({ grant_type: 'client_credentials', client_id: 'ia-agentes', client_secret: 'otro' })).status === 401, 'aceptó un secreto incorrecto');
+  const directo = await pedir({
+    grant_type: 'password',
+    client_id: 'ia-agentes',
+    client_secret: env.IA_AGENTES_CLIENT_SECRET,
+    username: 'gerente1',
+    password: 'Prueba123!',
+  });
+  afirmar(!directo.ok, `aceptó direct access grants: ${directo.status}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=ia-agentes');
+  afirmar(
+    cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
+      cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
+    'flujos del cliente ia-agentes',
+  );
+});
+
+prueba('Realm: el cliente n8n (201) solo da client credentials y su token trae automatizacion, gerente, view-users y plataforma-api', async () => {
+  const pedir = (cuerpo) =>
+    fetch(`${KEYCLOAK}/realms/supervision/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(cuerpo),
+    });
+  afirmar(env.N8N_KEYCLOAK_SECRETO, 'falta N8N_KEYCLOAK_SECRETO en .env');
+  const respuesta = await pedir({ grant_type: 'client_credentials', client_id: 'n8n', client_secret: env.N8N_KEYCLOAK_SECRETO });
+  afirmar(respuesta.ok, `client_credentials de n8n: ${respuesta.status} (¿se recreó Keycloak después de agregar el cliente o cambiar el secreto?)`);
+  const tokens = await respuesta.json();
+  const datos = leerToken(tokens.access_token);
+  afirmar(datos.azp === 'n8n', `azp: ${datos.azp}`);
+  afirmar([datos.aud].flat().includes('plataforma-api'), `aud: ${datos.aud}`);
+  for (const rol of ['automatizacion', 'gerente']) afirmar(datos.realm_access?.roles.includes(rol), `sin ${rol}: ${datos.realm_access?.roles}`);
+  // Solo gerente entre los roles de las personas (lectura); nunca admin
+  for (const rol of ROLES.filter((r) => r !== 'gerente')) afirmar(!datos.realm_access?.roles.includes(rol), `trae el rol de persona ${rol}`);
+  afirmar(datos.resource_access?.['realm-management']?.roles.includes('view-users'), 'sin view-users');
+  afirmar(datos.iss === `${KEYCLOAK}/realms/supervision`, `iss: ${datos.iss}`);
+  afirmar(tokens.expires_in === 300, `expires_in: ${tokens.expires_in}`);
+  // Lee el nombre y el correo del cliente de una obra (flujos de cobranza)
+  const cliente1 = await fetch(`${KEYCLOAK}/admin/realms/supervision/users/a0000000-0000-4000-8000-000000000007`, {
+    headers: { authorization: `Bearer ${tokens.access_token}` },
+  });
+  afirmar(cliente1.ok, `leer cliente1 con el token de n8n: ${cliente1.status}`);
+  afirmar((await cliente1.json()).email === 'cliente1@correo.test', 'correo de cliente1');
+  afirmar((await pedir({ grant_type: 'client_credentials', client_id: 'n8n', client_secret: 'otro' })).status === 401, 'aceptó un secreto incorrecto');
+  const directo = await pedir({
+    grant_type: 'password',
+    client_id: 'n8n',
+    client_secret: env.N8N_KEYCLOAK_SECRETO,
+    username: 'gerente1',
+    password: 'Prueba123!',
+  });
+  afirmar(!directo.ok, `aceptó direct access grants: ${directo.status}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=n8n');
+  afirmar(
+    cliente.standardFlowEnabled === false && cliente.implicitFlowEnabled === false && cliente.directAccessGrantsEnabled === false &&
+      cliente.serviceAccountsEnabled === true && cliente.publicClient === false,
+    'flujos del cliente n8n',
+  );
+});
+
 prueba('Realm: demo1 inicia sesión en el ERP con PKCE y el token trae sub, audiencia, azp y roles', async () => {
   const datos = leerToken(await obtenerTokenUsuario('demo1'));
   afirmar(datos.sub === 'a0000000-0000-4000-8000-000000000009', `sub: ${datos.sub}`);
@@ -231,6 +429,49 @@ prueba('Realm: la pantalla de inicio de sesión está en español y con el tema 
   afirmar(logo.ok, `logo: ${logo.status}`);
 });
 
+prueba('Realm: sesión offline de 30 días y scope offline_access en app-obra (101)', async () => {
+  const realm = await adminKeycloak('');
+  afirmar(realm.offlineSessionIdleTimeout === 2592000, `offlineSessionIdleTimeout: ${realm.offlineSessionIdleTimeout}`);
+  const [cliente] = await adminKeycloak('/clients?clientId=app-obra');
+  const opcionales = (await adminKeycloak(`/clients/${cliente.id}/optional-client-scopes`)).map((s) => s.name);
+  afirmar(opcionales.includes('offline_access'), `scopes opcionales de app-obra: ${opcionales}`);
+  const predeterminados = (await adminKeycloak(`/clients/${cliente.id}/default-client-scopes`)).map((s) => s.name);
+  afirmar(['roles', 'profile', 'email'].every((s) => predeterminados.includes(s)), `scopes de app-obra: ${predeterminados}`);
+});
+
+prueba('Realm: almacenero1 en la app con offline_access recibe un refresh token Offline con su rol', async () => {
+  const tokens = await obtenerTokensUsuario('almacenero1', {
+    clientId: 'app-obra',
+    redirectUri: 'appobra://callback',
+    scope: 'openid offline_access',
+  });
+  afirmar(tokens.scope.split(' ').includes('offline_access'), `scope: ${tokens.scope}`);
+  const refresco = leerToken(tokens.refresh_token);
+  afirmar(refresco.typ === 'Offline', `refresh token de tipo ${refresco.typ}`);
+  afirmar(tokens.refresh_expires_in === 2592000, `refresh_expires_in: ${tokens.refresh_expires_in}`);
+  const acceso = leerToken(tokens.access_token);
+  afirmar(acceso.azp === 'app-obra' && [acceso.aud].flat().includes('plataforma-api'), 'azp o audiencia');
+  afirmar(acceso.realm_access?.roles.includes('almacenero'), 'sin el rol almacenero');
+});
+
+// --- DynamoDB Local (101) ---
+prueba('DynamoDB Local: responde ListTables en el 8000', async () => {
+  // DynamoDB Local acepta cualquier credencial, pero exige un encabezado Authorization con forma de firma
+  const respuesta = await fetch(DYNAMODB, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-amz-json-1.0',
+      'x-amz-target': 'DynamoDB_20120810.ListTables',
+      authorization:
+        'AWS4-HMAC-SHA256 Credential=local/20260101/sa-east-1/dynamodb/aws4_request, SignedHeaders=host, Signature=0',
+    },
+    body: '{}',
+  });
+  afirmar(respuesta.ok, `ListTables: ${respuesta.status}`);
+  const { TableNames } = await respuesta.json();
+  afirmar(Array.isArray(TableNames), 'respuesta sin TableNames');
+});
+
 let fallidas = 0;
 for (const { nombre, fn } of pruebas) {
   try {
@@ -241,5 +482,6 @@ for (const { nombre, fn } of pruebas) {
     console.log(`FALLA ${nombre}\n      ${error.message}`);
   }
 }
+for (const aviso of avisos) console.log(`AVISO ${aviso}`);
 console.log(`\n${pruebas.length - fallidas} de ${pruebas.length} pruebas pasaron`);
 process.exit(fallidas ? 1 : 0);

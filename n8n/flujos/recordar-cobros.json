@@ -1,0 +1,664 @@
+{
+  "id": "cob201Recordar00",
+  "name": "Recordar cobros",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "7443085f-5fe0-51c5-ba16-e47823c72ce2",
+      "name": "Todos los días 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "af308cb3-6d7c-54a3-b970-9caf60dad5e5",
+      "name": "Ejecutar ahora",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.FINANZAS_URL }}/cobros/recordatorios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "5fa5c9cd-466a-57c5-85e3-0d95c7c85713",
+      "name": "Pedir recordatorios",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Una sola lista: primero los por vencer, después los vencidos (Finanzas ya los ordena en cada grupo)\nconst { porVencer = [], vencidos = [] } = $input.first().json;\nreturn [\n  ...porVencer.map((cobro) => ({ json: { ...cobro, tipo: 'RECORDATORIO_POR_VENCER' } })),\n  ...vencidos.map((cobro) => ({ json: { ...cobro, tipo: 'RECORDATORIO_VENCIDO' } })),\n];\n"
+      },
+      "id": "d3ab44ca-2be4-5413-b2cd-323822f87c27",
+      "name": "Unir cobros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "d1c9401a-310c-5d55-81df-56bf8861e255",
+      "name": "Recorrer cobros",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.OBRAS_URL }}/obras/{{ $json.obraId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "bfab3772-fdc7-5a12-a689-fa1568f5dd17",
+      "name": "Leer obra",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.KEYCLOAK_URL }}/admin/realms/supervision/users/{{ $json.asignaciones.clienteId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fa8a12f4-02c5-5424-a825-7fc6392fce72",
+      "name": "Leer cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "403675d4-b8f6-5f7e-b34e-7352473cfd32",
+              "leftValue": "={{ Boolean($json.email) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7f7172f8-cf79-5dd9-b67e-4e2176786593",
+      "name": "¿Tiene correo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];\nconst bs = (n) => 'Bs ' + Number(n).toFixed(2).replace('.', ',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\nconst fecha = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/');\nconst periodoTexto = (p) => { const [anio, mes] = String(p).split('-'); return `${MESES[Number(mes) - 1]} ${anio}`; };\nconst esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst nombreDe = (u) => [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username;\n\nconst cobro = $('Recorrer cobros').item.json;\nconst obra = $('Leer obra').item.json;\nconst cliente = $('Leer cliente').item.json;\nconst porVencer = cobro.tipo === 'RECORDATORIO_POR_VENCER';\nconst vence = fecha(cobro.venceEn);\nconst texto = `Su cobro ${cobro.numero} de ${bs(cobro.montoNeto)} por la obra ${obra.nombre} ${porVencer ? 'vence' : 'venció'} el ${vence}.`;\nreturn {\n  json: {\n    cobroId: cobro.id,\n    numero: cobro.numero,\n    obra: obra.nombre,\n    montoNeto: cobro.montoNeto,\n    venceEn: cobro.venceEn,\n    tipo: cobro.tipo,\n    correo: cliente.email,\n    asunto: porVencer ? `Recordatorio: su cobro ${cobro.numero} vence el ${vence}` : `Cobro vencido: ${cobro.numero} · ${obra.nombre}`,\n    html: `<p>${esc(texto)}</p><p>Si ya realizó el pago, no tome en cuenta este mensaje.</p>`,\n  },\n};\n"
+      },
+      "id": "1d48f48d-5de4-5a27-9280-0f9a0ca1393a",
+      "name": "Armar recordatorio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMPRESA_NOMBRE }} <{{ $env.COBRANZA_REMITENTE }}>",
+        "toEmail": "={{ $json.correo }}",
+        "subject": "={{ $json.asunto }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "bccEmail": "={{ $env.COBRANZA_CORREO }}"
+        }
+      },
+      "id": "3dc9d95e-722f-5a95-9eea-4b86aefb1405",
+      "name": "Enviar recordatorio",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1760,
+        400
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "cred201Mailpit01",
+          "name": "SMTP"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FINANZAS_URL }}/cobros/{{ $('Armar recordatorio').item.json.cobroId }}/envios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tipo: $('Armar recordatorio').item.json.tipo, destinatario: $('Armar recordatorio').item.json.correo, ejecucionN8n: $execution.id }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "f4da7238-5d4f-5a54-84e8-4f0b2efce89f",
+      "name": "Anotar recordatorio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "cred201Keycloak1",
+          "name": "Keycloak · cliente n8n"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { ...$('Armar recordatorio').item.json, ok: true } };\n"
+      },
+      "id": "9f5b6b14-d4f9-5614-a38b-506e62e4d4d1",
+      "name": "Recordado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Un cobro que no se pudo recordar no detiene a los demás: queda en la lista con su motivo y la ejecución termina\n// como fallida (nodo «Fallaron recordatorios»)\nconst cobro = $('Recorrer cobros').item.json;\nconst error = $json.error;\nconst motivo = error\n  ? (typeof error === 'string' ? error : error.message ?? JSON.stringify(error))\n  : 'El cliente no tiene correo registrado';\nreturn { json: { cobroId: cobro.id, numero: cobro.numero, montoNeto: cobro.montoNeto, venceEn: cobro.venceEn, tipo: cobro.tipo, ok: false, motivo } };\n"
+      },
+      "id": "a64807ac-8048-58ae-8615-16889b09f2b5",
+      "name": "No recordado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];\nconst bs = (n) => 'Bs ' + Number(n).toFixed(2).replace('.', ',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\nconst fecha = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/');\nconst periodoTexto = (p) => { const [anio, mes] = String(p).split('-'); return `${MESES[Number(mes) - 1]} ${anio}`; };\nconst esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst nombreDe = (u) => [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username;\n\nconst resultados = $input.all().map((item) => item.json);\nconst recordados = resultados.filter((r) => r.ok);\nconst errores = resultados.filter((r) => !r.ok).map((r) => `${r.numero}: ${r.motivo}`);\nconst hoy = $('Pedir recordatorios').first().json.hoy;\nconst TIPOS = { RECORDATORIO_POR_VENCER: 'Por vencer', RECORDATORIO_VENCIDO: 'Vencido' };\nconst celda = (t) => `<td style=\"border:1px solid #ccc;padding:4px 8px\">${esc(t)}</td>`;\nconst filas = recordados\n  .map((r) => `<tr>${celda(r.numero)}${celda(r.obra)}${celda(bs(r.montoNeto))}${celda(fecha(r.venceEn))}${celda(TIPOS[r.tipo])}</tr>`)\n  .join('');\nconst encabezado = ['Número', 'Obra', 'Monto', 'Vencimiento', 'Tipo'].map((t) => `<th style=\"border:1px solid #ccc;padding:4px 8px;text-align:left\">${t}</th>`).join('');\nreturn [{\n  json: {\n    fecha: fecha(hoy),\n    recordados: recordados.length,\n    errores,\n    html: `<p>Cobros recordados hoy:</p><table style=\"border-collapse:collapse\"><tr>${encabezado}</tr>${filas}</table>`,\n  },\n}];\n"
+      },
+      "id": "a72ca050-779b-515f-b2e3-04a3b61af3f6",
+      "name": "Resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d3cbb0da-355f-5083-97ea-81d46bcc65bb",
+              "leftValue": "={{ $json.recordados > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0c53ff50-676d-5571-919f-fd181625c336",
+      "name": "¿Hubo recordatorios?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMPRESA_NOMBRE }} <{{ $env.COBRANZA_REMITENTE }}>",
+        "toEmail": "={{ $env.COBRANZA_CORREO }}",
+        "subject": "=Resumen de cobranza del {{ $json.fecha }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}<p>{{ $env.EMPRESA_NOMBRE }}</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1f29aebb-3abc-5264-94dd-71c6125c87c3",
+      "name": "Enviar resumen",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1320,
+        40
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "cred201Mailpit01",
+          "name": "SMTP"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0fd387ff-162c-513d-9941-de9d8b1353f0",
+              "leftValue": "={{ $('Resumen').first().json.errores.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7c30c9a2-2be8-5ef0-bc81-02ecff3ef83e",
+      "name": "¿Hubo errores?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'No se enviaron ' + $('Resumen').first().json.errores.length + ' recordatorios. ' + $('Resumen').first().json.errores.join(' · ') }}"
+      },
+      "id": "e8ed6bbb-99d6-53c8-a557-1b234cb15f96",
+      "name": "Fallaron recordatorios",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Todos los días 08:00": {
+      "main": [
+        [
+          {
+            "node": "Pedir recordatorios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedir recordatorios": {
+      "main": [
+        [
+          {
+            "node": "Unir cobros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unir cobros": {
+      "main": [
+        [
+          {
+            "node": "Recorrer cobros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar ahora": {
+      "main": [
+        [
+          {
+            "node": "Pedir recordatorios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recorrer cobros": {
+      "main": [
+        [
+          {
+            "node": "Resumen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer obra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer obra": {
+      "main": [
+        [
+          {
+            "node": "Leer cliente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No recordado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene correo?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No recordado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene correo?": {
+      "main": [
+        [
+          {
+            "node": "Armar recordatorio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No recordado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar recordatorio": {
+      "main": [
+        [
+          {
+            "node": "Enviar recordatorio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar recordatorio": {
+      "main": [
+        [
+          {
+            "node": "Anotar recordatorio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No recordado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anotar recordatorio": {
+      "main": [
+        [
+          {
+            "node": "Recordado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No recordado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recordado": {
+      "main": [
+        [
+          {
+            "node": "Recorrer cobros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No recordado": {
+      "main": [
+        [
+          {
+            "node": "Recorrer cobros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumen": {
+      "main": [
+        [
+          {
+            "node": "¿Hubo recordatorios?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hubo recordatorios?": {
+      "main": [
+        [
+          {
+            "node": "Enviar resumen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Hubo errores?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar resumen": {
+      "main": [
+        [
+          {
+            "node": "¿Hubo errores?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hubo errores?": {
+      "main": [
+        [
+          {
+            "node": "Fallaron recordatorios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/La_Paz",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": []
+}

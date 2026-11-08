@@ -1,0 +1,6 @@
+{
+  "id": "cred201Mailpit01",
+  "name": "SMTP",
+  "type": "smtp",
+  "data": {}
+}

@@ -1,6 +1,57 @@
 # Entorno de desarrollo. Versiones y puertos: docs/entorno-local.md de supervision-docs.
-# Sin perfil: RabbitMQ y Keycloak. Con --profile bases: también PostgreSQL y MongoDB.
+# Sin perfil: RabbitMQ, Keycloak y DynamoDB Local. Con --profile bases: también PostgreSQL y MongoDB.
+# Con --profile ia: ia-api e ia-worker construidos desde services/ia (401). Opcional: también se corren con uv.
 name: supervision
+
+# 401 · Servicio de IA en contenedor: una sola imagen para sus tres procesos (Dockerfile de services/ia).
+# PostgreSQL (5433), MongoDB y Obras, Materiales y Finanzas se alcanzan en la máquina (host.docker.internal), como
+# cuando se corren sin Docker; RabbitMQ y Keycloak, dentro del Compose. Keycloak se alcanza como localhost:8080
+# gracias a ia/reenviar-keycloak.py, para que el emisor de los tokens sea el mismo que validan los demás servicios.
+x-ia: &ia
+  build: ${IA_DIR:-../services/ia}
+  image: supervision-ia:dev
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ./ia/reenviar-keycloak.py:/reenviar-keycloak.py:ro
+
+x-ia-entorno: &ia-entorno
+  IA_ENTORNO: desarrollo
+  IA_PUERTO: "8085"
+  IA_REPORTES_DB_URL: postgresql+psycopg://ia:${POSTGRES_IA_CLAVE}@host.docker.internal:5433/reportes_db
+  IA_MONGO_URL: mongodb://host.docker.internal:27017/?directConnection=true
+  IA_MONGO_DB: ia_db
+  IA_RABBITMQ_URL: amqp://ia:${RABBITMQ_IA_CLAVE}@rabbitmq:5672/
+  IA_KEYCLOAK_ISSUER: http://localhost:8080/realms/supervision
+  IA_AUDIENCIA: plataforma-api
+  IA_ZONA_HORARIA: America/La_Paz
+  # El secreto de ia-reportes solo lo recibe ia-carga-inicial (401, «Token»)
+  IA_REPORTES_CLIENT_SECRET: ""
+  # 503 · Constructor de reportes: usuario de solo lectura de reportes_db (rol ia_reportes_lector)
+  IA_REPORTES_DB_URL_LECTURA: postgresql+psycopg://ia_reportes_lector:${POSTGRES_IA_LECTOR_CLAVE:-}@host.docker.internal:5433/reportes_db
+  # 503 (y 502) · Modelo de lenguaje: ollama (por defecto; servicio ollama del perfil ollama) o anthropic.
+  # IA_LLM_MODELO vacío: qwen3:8b con ollama y claude-sonnet-5-5 con anthropic.
+  IA_LLM_PROVEEDOR: ${IA_LLM_PROVEEDOR:-ollama}
+  IA_LLM_MODELO: ${IA_LLM_MODELO:-}
+  IA_OLLAMA_URL: ${IA_OLLAMA_URL:-http://ollama:11434}
+  # Secreto: solo en infra/.env (vacío en .env.example). Con anthropic y sin clave, el servicio no arranca.
+  IA_ANTHROPIC_API_KEY: ${IA_ANTHROPIC_API_KEY:-}
+  # 501 · Cliente MCP (host de los agentes, en ia-worker) y servidor MCP propio (POST /mcp de ia-api). El secreto de
+  # ia-agentes solo lo recibe ia-worker (más abajo). Obras, Materiales y Finanzas corren en la máquina.
+  IA_AGENTES_CLIENT_ID: ia-agentes
+  IA_AGENTES_CLIENT_SECRET: ""
+  IA_OBRAS_MCP_URL: http://host.docker.internal:8081/mcp
+  IA_MATERIALES_MCP_URL: http://host.docker.internal:8082/mcp
+  IA_FINANZAS_MCP_URL: http://host.docker.internal:8083/mcp
+  IA_PROPIO_MCP_URL: http://ia-api:8085/mcp
+  # Hosts que acepta el servidor MCP de IA (si no está en la lista, el SDK responde 421): incluye ia-api:8085
+  IA_MCP_HOSTS_PERMITIDOS: localhost:8085,127.0.0.1:8085,ia-api:8085
+
+# Arranca el reenvío de localhost:8080 a Keycloak, espera a que escuche y ejecuta el proceso del servicio
+x-ia-con-keycloak: &ia-con-keycloak >-
+  python /reenviar-keycloak.py &
+  until python -c "import socket; socket.create_connection(('127.0.0.1', 8080), 1)" 2>/dev/null; do sleep 0.2; done;
+  exec "$$@"
 
 services:
   rabbitmq:
@@ -35,7 +86,8 @@ services:
       RABBITMQ_MATERIALES_CLAVE: ${RABBITMQ_MATERIALES_CLAVE:?falta RABBITMQ_MATERIALES_CLAVE en .env}
       RABBITMQ_FINANZAS_CLAVE: ${RABBITMQ_FINANZAS_CLAVE:?falta RABBITMQ_FINANZAS_CLAVE en .env}
       RABBITMQ_IA_CLAVE: ${RABBITMQ_IA_CLAVE:?falta RABBITMQ_IA_CLAVE en .env}
-      RABBITMQ_NOTIFICACIONES_CLAVE: ${RABBITMQ_NOTIFICACIONES_CLAVE:?falta RABBITMQ_NOTIFICACIONES_CLAVE en .env}
+      # 201: opcional; vacía, no se crea el usuario n8n (lo exige el servicio n8n del perfil automatizacion)
+      RABBITMQ_N8N_CLAVE: ${RABBITMQ_N8N_CLAVE:-}
     volumes:
       - ./rabbitmq/iniciar.sh:/iniciar.sh:ro
       - ./rabbitmq/definiciones.json:/definiciones.json:ro
@@ -45,6 +97,9 @@ services:
   # Base H2 dentro del contenedor (sin volumen): al recrearlo (bajar y levantar) el realm se vuelve a importar.
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.1
+    # 201: sin N8N_KEYCLOAK_SECRETO en .env, el cliente n8n se importa con un secreto al azar (nadie lo conoce y el
+    # cliente queda sin uso) en lugar de uno vacío, que Keycloak aceptaría. Así el compose no exige la variable.
+    entrypoint: ["/bin/bash", "-c", "export N8N_KEYCLOAK_SECRETO=\"$${N8N_KEYCLOAK_SECRETO:-sin-configurar-$$(</proc/sys/kernel/random/uuid)}\"; exec /opt/keycloak/bin/kc.sh \"$$@\"", "--"]
     command: ["start-dev", "--import-realm"]
     ports:
       - "8080:8080"
@@ -52,6 +107,12 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USUARIO:?falta KEYCLOAK_ADMIN_USUARIO en .env}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_CLAVE:?falta KEYCLOAK_ADMIN_CLAVE en .env}
       KC_HEALTH_ENABLED: "true"
+      # 401: el realm importado toma de aquí el secreto del cliente ia-reportes ("secret": "${IA_REPORTES_CLIENT_SECRET}")
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET:?falta IA_REPORTES_CLIENT_SECRET en .env}
+      # 501: ídem para el cliente ia-agentes ("secret": "${IA_AGENTES_CLIENT_SECRET}")
+      IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET:?falta IA_AGENTES_CLIENT_SECRET en .env}
+      # 201: ídem para el cliente n8n ("secret": "${N8N_KEYCLOAK_SECRETO}"); opcional (ver entrypoint)
+      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO:-}
       KC_HTTP_PORT: "8080"
       # El tema se lee del disco en cada petición: los cambios se ven sin reiniciar
       KC_SPI_THEME__CACHE_THEMES: "false"
@@ -75,8 +136,15 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USUARIO:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_CLAVE:?falta POSTGRES_CLAVE en .env}
+      # 401: contraseña del usuario ia, dueño de reportes_db (la usa init-reportes.sh)
+      POSTGRES_IA_CLAVE: ${POSTGRES_IA_CLAVE:?falta POSTGRES_IA_CLAVE en .env}
+      # 503: contraseña del rol de solo lectura ia_reportes_lector (la usa init-reportes.sh; sin ella el script falla)
+      POSTGRES_IA_LECTOR_CLAVE: ${POSTGRES_IA_LECTOR_CLAVE:-}
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Corren en orden de nombre y solo con el volumen vacío
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-bases.sql:ro
+      - ./postgres/init-reportes.sh:/docker-entrypoint-initdb.d/02-reportes.sh:ro
+      - ./postgres/lector-reportes.sql:/lector-reportes.sql:ro
       - datos-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d obras_db"]
@@ -114,7 +182,264 @@ services:
     command: ["mongosh", "--quiet", "mongodb://mongo:27017/?directConnection=true", "/iniciar-replica.js"]
     restart: "no"
 
+  # DynamoDB Local para el servicio de Sincronización (101). -sharedDb: una sola base para cualquier
+  # credencial y región (las pruebas y el servicio ven las mismas tablas). Las tablas las crea
+  # Sincronización al iniciar con DYNAMODB_CREAR_TABLAS=true.
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    working_dir: /home/dynamodblocal
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    # El volumen se crea con dueño root: el usuario de la imagen (dynamodblocal) no podría escribir en él
+    user: root
+    ports:
+      - "8000:8000"
+    volumes:
+      - datos-dynamodb:/home/dynamodblocal/data
+    healthcheck:
+      # Sin credenciales responde 400 (MissingAuthenticationToken): basta con que conteste
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # AWS CLI para subir y borrar las fotos de los datos de prueba (011) en el bucket S3 de desarrollo.
+  # Herramienta de una sola vez: se usa con "docker compose --profile herramientas run --rm s3-cli s3 ...";
+  # los scripts de semilla/ rechazan cualquier bucket que no empiece con supervision-dev-.
+  s3-cli:
+    image: amazon/aws-cli:2.38.0
+    profiles: ["herramientas"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-sa-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+    volumes:
+      - ./semilla/fotos:/semilla/fotos:ro
+    # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--version"]
+    restart: "no"
+
+  # 401 · psql para vaciar reportes_db en "recargar" (usuario ia). Herramienta de una sola vez, como s3-cli:
+  # docker compose --profile herramientas run --rm psql-cli -f /vaciar-reportes.sql
+  # Llega al PostgreSQL de la máquina (instalación local o perfil bases) por host.docker.internal:5433.
+  psql-cli:
+    image: postgres:17
+    profiles: ["herramientas"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PGHOST: host.docker.internal
+      PGPORT: "5433"
+      PGUSER: ia
+      PGDATABASE: reportes_db
+      PGPASSWORD: ${POSTGRES_IA_CLAVE}
+    volumes:
+      - ./postgres/vaciar-reportes.sql:/vaciar-reportes.sql:ro
+      # 503: rol ia_reportes_lector en una base que ya existe (como postgres; comando en el README)
+      - ./postgres/lector-reportes.sql:/lector-reportes.sql:ro
+    entrypoint: ["psql", "-v", "ON_ERROR_STOP=1", "-X", "-q"]
+    # Sin argumentos solo muestra la versión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--version"]
+    restart: "no"
+
+  # 503 · mongosh contra el MongoDB de la máquina (instalación local o perfil bases) para vaciar ia_db.consumo_atipico en
+  # "recargar". Herramienta de una sola vez, como psql-cli:
+  # docker compose --profile herramientas run --rm mongo-cli /vaciar-ia.js
+  mongo-cli:
+    image: mongo:8.0
+    profiles: ["herramientas"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./mongo/vaciar-ia.js:/vaciar-ia.js:ro
+    entrypoint: ["mongosh", "--quiet", "mongodb://host.docker.internal:27017/ia_db?directConnection=true"]
+    # Sin argumentos solo comprueba la conexión y termina bien (así "levantar -Perfil herramientas" no falla)
+    command: ["--eval", "db.runCommand({ ping: 1 }).ok"]
+    restart: "no"
+
+  # 503 (y 502) · Modelo de lenguaje local para ia-api e ia-worker (IA_OLLAMA_URL=http://ollama:11434). Perfil propio:
+  # solo para quien usa IA_LLM_PROVEEDOR=ollama. Los modelos quedan en el volumen datos-ollama (qwen3:8b, unos 5 GB):
+  # se descargan una vez con scripts/descargar-modelo.*. El puerto se publica solo en 127.0.0.1 (para el servicio de IA
+  # corrido con uv en la máquina); nunca fuera de ella. GPU NVIDIA opcional: docker-compose.gpu.yml (README).
+  ollama:
+    image: ollama/ollama:0.40.4
+    profiles: ["ollama"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    environment:
+      # Caché de contexto en 8 bits con flash attention: el contexto de 16384 de la 503 cabe en menos memoria
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: q8_0
+      # Un solo modelo cargado y una petición a la vez (la 502 ejecuta un agente a la vez)
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      # El modelo queda en memoria 30 minutos después del último uso
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - datos-ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # 401 · API del servicio de IA (puerto 8085). Aplica las migraciones de reportes_db (alembic) antes de atender.
+  ia-api:
+    <<: *ia
+    profiles: ["ia"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-api"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    ports:
+      - "8085:8085"
+    environment:
+      <<: *ia-entorno
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/salud', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # 401 · Consumidor de la cola ia y tareas programadas. Espera a ia-api, que deja reportes_db migrada.
+  ia-worker:
+    <<: *ia
+    profiles: ["ia"]
+    command: ["ia-worker"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    environment:
+      <<: *ia-entorno
+      # 501: el host de los agentes pide el token de ia-agentes (client credentials) para llamar a /mcp
+      IA_AGENTES_CLIENT_SECRET: ${IA_AGENTES_CLIENT_SECRET}
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      ia-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 401 · Carga inicial de la base de reportes: corre una vez y termina (código 0 si cargó todo). Perfil propio para
+  # no correrla en cada "up": docker compose --profile ia-carga run --rm ia-carga-inicial
+  # Necesita Obras, Materiales y Finanzas levantados en la máquina; aplica antes las migraciones (alembic es idempotente).
+  # Es el único proceso que recibe el secreto de ia-reportes.
+  ia-carga-inicial:
+    <<: *ia
+    profiles: ["ia-carga"]
+    command: ["sh", "-c", "alembic upgrade head && exec ia-carga-inicial"]
+    entrypoint: ["sh", "-c", *ia-con-keycloak, "--"]
+    environment:
+      <<: *ia-entorno
+      IA_OBRAS_URL: http://host.docker.internal:8081
+      IA_MATERIALES_URL: http://host.docker.internal:8082
+      IA_FINANZAS_URL: http://host.docker.internal:8083
+      IA_REPORTES_CLIENT_ID: ia-reportes
+      IA_REPORTES_CLIENT_SECRET: ${IA_REPORTES_CLIENT_SECRET}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+
+  # 201 · Automatización de cobranza (perfil automatizacion): n8n con los tres flujos de n8n/flujos y Mailpit como buzón.
+  # Al arrancar, n8n/iniciar.sh comprueba las variables, arranca el reenvío de localhost:8080 a Keycloak (mismo emisor
+  # de tokens que validan los servicios), importa credenciales y flujos, los publica y arranca n8n. Obras y Finanzas
+  # corren en la máquina (host.docker.internal), como para el perfil ia. Las variables que solo usa este perfil van con
+  # valor por defecto vacío para no romper los demás perfiles; si falta alguna, el contenedor se detiene y dice cuál.
+  n8n:
+    image: n8nio/n8n:2.43.7
+    profiles: ["automatizacion"]
+    entrypoint: ["tini", "--", "sh", "/n8n-config/iniciar.sh"]
+    ports:
+      - "5678:5678"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GENERIC_TIMEZONE: America/La_Paz
+      TZ: America/La_Paz
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      # Desde n8n 2.0 viene en true; los flujos leen sus URLs y correos de $env
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # Cuenta de propietario sin paso manual (variables del código de n8n 2.43.7; hash bcrypt, README)
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_PROPIETARIO_CORREO:-}
+      N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_PROPIETARIO_CLAVE_HASH:-}
+      N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_PROPIETARIO_NOMBRE:-Administración}
+      N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_PROPIETARIO_APELLIDO:-Cobranzas}
+      # Secretos de las credenciales: iniciar.sh los pasa a CREDENTIALS_OVERWRITE_DATA (nunca en n8n/credenciales)
+      N8N_KEYCLOAK_SECRETO: ${N8N_KEYCLOAK_SECRETO:-}
+      RABBITMQ_N8N_CLAVE: ${RABBITMQ_N8N_CLAVE:-}
+      # Variables de los flujos ($env)
+      FINANZAS_URL: ${N8N_FINANZAS_URL:-http://host.docker.internal:8083}
+      OBRAS_URL: ${N8N_OBRAS_URL:-http://host.docker.internal:8081}
+      KEYCLOAK_URL: http://localhost:8080
+      EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
+      COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:-cobranzas@constructora-andina.test}
+      COBRANZA_CORREO: ${COBRANZA_CORREO:-cobranzas@constructora-andina.test}
+      # 602 · Servidor de correo (secretos.sh lo pasa a la credencial SMTP). Vacías: Mailpit (mailpit:1025, sin TLS)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PUERTO: ${SMTP_PUERTO:-}
+      SMTP_SEGURO: ${SMTP_SEGURO:-}
+      SMTP_USUARIO: ${SMTP_USUARIO:-}
+      SMTP_CLAVE: ${SMTP_CLAVE:-}
+      # 010 · Avisos: Materiales (stock bajo), enlace del portal en el correo de la planilla y Firebase Cloud Messaging.
+      # Sin las tres de Firebase, iniciar.sh importa los flujos de push sin publicarlos; la cuenta de servicio pasa a
+      # la credencial googleApi por CREDENTIALS_OVERWRITE_DATA (secretos.sh)
+      MATERIALES_URL: ${N8N_MATERIALES_URL:-http://host.docker.internal:8082}
+      PORTAL_URL: ${PORTAL_URL:-http://localhost:4300}
+      FIREBASE_PROYECTO_ID: ${FIREBASE_PROYECTO_ID:-}
+      FIREBASE_CUENTA_CORREO: ${FIREBASE_CUENTA_CORREO:-}
+      FIREBASE_CLAVE_PRIVADA: ${FIREBASE_CLAVE_PRIVADA:-}
+      # Destino del reenvío de localhost:8080 (n8n/reenviar-keycloak.mjs)
+      REENVIO_KEYCLOAK_HOST: ${N8N_REENVIO_KEYCLOAK_HOST:-keycloak}
+      REENVIO_KEYCLOAK_PUERTO: ${N8N_REENVIO_KEYCLOAK_PUERTO:-8080}
+    volumes:
+      - ./n8n:/n8n-config:ro
+      - datos-n8n:/home/node/.n8n
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5678/healthz/readiness').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      # Importar y publicar los flujos arranca n8n varias veces antes del servidor
+      start_period: 120s
+    restart: unless-stopped
+
+  # 201 · Buzón de prueba: recibe por SMTP (mailpit:1025) todos los correos de desarrollo; nunca salen a internet.
+  # Interfaz y API en http://localhost:8025 (las usan las pruebas). Sin volumen: los correos se pierden al recrearlo.
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    profiles: ["automatizacion"]
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      TZ: America/La_Paz
+      # No consulta en internet si hay otra versión
+      MP_DISABLE_VERSION_CHECK: "true"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
 volumes:
   datos-rabbitmq:
   datos-postgres:
   datos-mongo:
+  datos-dynamodb:
+  datos-ollama:
+  datos-n8n:

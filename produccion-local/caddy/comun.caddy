@@ -1,0 +1,29 @@
+# 601 · Fragmentos comunes de los tres Caddy de la «producción local» (cada Caddyfile importa este archivo).
+
+# Proxy a un servicio del grupo: Caddy agrega X-Forwarded-For, -Proto y -Host (Keycloak los usa con KC_PROXY_HEADERS)
+(servicio) {
+	encode gzip
+	reverse_proxy {args[0]}
+}
+
+# Frontend estático compilado (SPA): si el archivo no existe, index.html. Sin caché en lo que se escribe al publicar
+# o cambia en cada versión (diseño de la 601, «Frontends: archivos estáticos»)
+(estatico) {
+	root * /sitios/{args[0]}
+	encode gzip
+	@sin_cache path /index.html /configuracion.json /federation.manifest.json /ngsw.json /ngsw-worker.js
+	header @sin_cache Cache-Control "no-cache"
+	# Rutas de la SPA (sin extensión, incluida «/»): responden index.html
+	@ruta_spa path_regexp ^[^.]*$
+	header @ruta_spa Cache-Control "no-cache"
+	try_files {path} /index.html
+	file_server
+}
+
+# Microfrontend remoto: además, CORS para el origen del shell en remoteEntry.json y en los módulos JavaScript
+(remoto) {
+	import estatico {args[0]}
+	@modulos path /remoteEntry.json *.js *.mjs
+	header @modulos Access-Control-Allow-Origin {$ERP_URL}
+	header @modulos Vary Origin
+}

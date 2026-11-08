@@ -30,6 +30,17 @@ export async function obtenerTokenUsuario(
   clientId = 'erp',
   redirectUri = 'http://localhost:4200/',
 ) {
+  return (await obtenerTokensUsuario(usuario, { clave, clientId, redirectUri })).access_token;
+}
+
+/**
+ * Igual que obtenerTokenUsuario, pero devuelve la respuesta completa de Keycloak (access_token,
+ * refresh_token, scope…). `scope` permite pedir, por ejemplo, 'openid offline_access' (101).
+ */
+export async function obtenerTokensUsuario(
+  usuario,
+  { clave = 'Prueba123!', clientId = 'erp', redirectUri = 'http://localhost:4200/', scope = 'openid' } = {},
+) {
   const verificador = base64url(randomBytes(32));
   const desafio = base64url(createHash('sha256').update(verificador).digest());
   const cookies = frasco();
@@ -40,7 +51,7 @@ export async function obtenerTokenUsuario(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'openid',
+    scope,
     code_challenge: desafio,
     code_challenge_method: 'S256',
     state: base64url(randomBytes(8)),
@@ -74,7 +85,7 @@ export async function obtenerTokenUsuario(
     }),
   });
   if (!respuesta.ok) throw new Error(`Canje del código: ${respuesta.status} ${await respuesta.text()}`);
-  return (await respuesta.json()).access_token;
+  return respuesta.json();
 }
 
 /** Datos del token (sin verificar la firma: solo para pruebas). */

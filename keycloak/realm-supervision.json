@@ -28,6 +28,7 @@
   "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 36000,
   "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
   "roles": {
     "realm": [
       {
@@ -53,6 +54,14 @@
       {
         "name": "cliente",
         "description": "Cliente de la constructora (portal)"
+      },
+      {
+        "name": "agente_ia",
+        "description": "Agentes de IA (service account de ia-agentes, 501): solo /mcp de cada servicio, nunca las rutas REST"
+      },
+      {
+        "name": "automatizacion",
+        "description": "Automatización de cobranza (service account de n8n, 201): solo las rutas de Finanzas que llama n8n"
       }
     ]
   },
@@ -69,14 +78,14 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "http://localhost:4200/*"
+        "${ERP_URL:http://localhost:4200}/*"
       ],
       "webOrigins": [
-        "http://localhost:4200"
+        "${ERP_URL:http://localhost:4200}"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4200/*"
+        "post.logout.redirect.uris": "${ERP_URL:http://localhost:4200}/*"
       },
       "protocolMappers": [
         {
@@ -106,14 +115,14 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "http://localhost:4300/*"
+        "${PORTAL_URL:http://localhost:4300}/*"
       ],
       "webOrigins": [
-        "http://localhost:4300"
+        "${PORTAL_URL:http://localhost:4300}"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4300/*"
+        "post.logout.redirect.uris": "${PORTAL_URL:http://localhost:4300}/*"
       },
       "protocolMappers": [
         {
@@ -151,6 +160,8 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "exp://*##appobra://*"
       },
+      "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "basic", "email"],
+      "optionalClientScopes": ["offline_access"],
       "protocolMappers": [
         {
           "name": "audiencia plataforma-api",
@@ -174,7 +185,94 @@
       "protocol": "openid-connect",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "gateway-secreto-solo-desarrollo",
+      "secret": "${KEYCLOAK_GATEWAY_CLIENT_SECRET:gateway-secreto-solo-desarrollo}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "ia-reportes",
+      "name": "IA: carga inicial de la base de reportes (401)",
+      "description": "Solo client credentials. El secreto sale de IA_REPORTES_CLIENT_SECRET (infra/.env) al importar el realm.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${IA_REPORTES_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "ia-agentes",
+      "name": "IA: agentes del ERP, cliente MCP (501 y 502)",
+      "description": "Solo client credentials, con el rol agente_ia (solo lo acepta /mcp de cada servicio). El secreto sale de IA_AGENTES_CLIENT_SECRET (infra/.env) al importar el realm.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${IA_AGENTES_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia plataforma-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "plataforma-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "n8n",
+      "name": "n8n: automatización de cobranza (201)",
+      "description": "Solo client credentials, con los roles automatizacion (rutas de Finanzas de la 201) y gerente (lectura) y view-users de realm-management (nombre y correo del cliente). El secreto sale de N8N_KEYCLOAK_SECRETO (infra/.env) al importar el realm.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${N8N_KEYCLOAK_SECRETO}",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -208,7 +306,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -228,7 +326,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -248,7 +346,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -268,7 +366,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -288,7 +386,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -308,7 +406,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -323,12 +421,12 @@
       "enabled": true,
       "firstName": "Roberto",
       "lastName": "Justiniano Paz",
-      "email": "cliente1@correo.test",
+      "email": "${CLIENTE1_CORREO:cliente1@correo.test}",
       "emailVerified": true,
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -348,7 +446,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -368,7 +466,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Prueba123!",
+          "value": "${USUARIOS_PRUEBA_CLAVE:Prueba123!}",
           "temporary": false
         }
       ],
@@ -389,6 +487,39 @@
         "realm-management": [
           "view-users",
           "view-realm"
+        ]
+      }
+    },
+    {
+      "username": "service-account-ia-reportes",
+      "enabled": true,
+      "serviceAccountClientId": "ia-reportes",
+      "realmRoles": [
+        "default-roles-supervision",
+        "gerente"
+      ]
+    },
+    {
+      "username": "service-account-ia-agentes",
+      "enabled": true,
+      "serviceAccountClientId": "ia-agentes",
+      "realmRoles": [
+        "default-roles-supervision",
+        "agente_ia"
+      ]
+    },
+    {
+      "username": "service-account-n8n",
+      "enabled": true,
+      "serviceAccountClientId": "n8n",
+      "realmRoles": [
+        "default-roles-supervision",
+        "automatizacion",
+        "gerente"
+      ],
+      "clientRoles": {
+        "realm-management": [
+          "view-users"
         ]
       }
     }

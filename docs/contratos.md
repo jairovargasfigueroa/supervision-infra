@@ -10,6 +10,23 @@ Lo que este repo deja listo para los demás proyectos. La fuente de los eventos 
 | Keycloak | 8080 (salud en el puerto de gestión 9000, solo dentro del contenedor) |
 | PostgreSQL (perfil `bases`) | 5433 |
 | MongoDB (perfil `bases`) | 27017 |
+| Servicio de IA, `ia-api` (perfil `ia`, 401) | 8085 |
+| Ollama (perfil `ollama`, 503) | 11434, solo en `127.0.0.1` (en la red de Compose, `http://ollama:11434`) |
+| n8n (perfil `automatizacion`, 201) | 5678 (editor y panel de ejecuciones) |
+| Mailpit (perfil `automatizacion`, 201) | 1025 (SMTP) · 8025 (buzón web y API) |
+
+### Ensayo local, «producción local» (601)
+
+Tres grupos que hacen de las tres nubes, cada uno con su Caddy (HTTPS con la CA local) en un puerto propio de la máquina, elegidos para no chocar con los de desarrollo. Todas las direcciones son `https://<pieza>.<grupo>.localhost:<puerto del grupo>`:
+
+| Grupo | Puerto HTTPS | Piezas publicadas por su Caddy |
+|---|---|---|
+| `azure` | 8443 | `keycloak`, `gateway`, `obras`, `finanzas`, `n8n`, `mailpit`, `rabbitmq` (panel), `erp`, `mf-obras`, `mf-materiales`, `mf-supervision`, `portal` |
+| `google` | 9443 | `ia`, `materiales` |
+| `aws` | 10443 | `sincronizacion`, `s3` (MinIO) |
+| RabbitMQ (AMQPS, grupo `azure`) | 5671 | `rabbitmq.azure.localhost:5671`, TLS con el certificado de la CA local |
+
+Las bases (PostgreSQL, MongoDB, DynamoDB Local) no se publican en la máquina: solo las ve su grupo.
 
 ## RabbitMQ: usuarios
 
@@ -21,7 +38,7 @@ Un usuario por servicio, con permisos de configurar, escribir y leer en el vhost
 | `materiales` | `RABBITMQ_MATERIALES_CLAVE` | services/materiales (`RABBITMQ_URL`) |
 | `finanzas` | `RABBITMQ_FINANZAS_CLAVE` | services/finanzas (`RABBITMQ_USER` / `RABBITMQ_PASSWORD`) |
 | `ia` | `RABBITMQ_IA_CLAVE` | services/ia (capa 4, `IA_RABBITMQ_URL`) |
-| `notificaciones` | `RABBITMQ_NOTIFICACIONES_CLAVE` | services/notificaciones (010, `RABBITMQ_URL`) |
+| `n8n` | `RABBITMQ_N8N_CLAVE` | n8n (201): credencial «RabbitMQ» de los flujos; permiso solo de lectura sobre `n8n.cobro-emitido` y `n8n.cobro-pagado` (201) y `n8n.stock-bajo` y `n8n.planilla-presentada` (010), sin configurar ni escribir: `read` = `^n8n\.(cobro-emitido|cobro-pagado|stock-bajo|planilla-presentada)$`. Si la variable está vacía, `rabbitmq-init` no crea el usuario (el perfil `automatizacion` la exige) |
 
 El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servicios usan su propio usuario.
 
@@ -33,37 +50,112 @@ El usuario `guest` de RabbitMQ solo entra desde dentro del contenedor: los servi
 
 Archivo `keycloak/realm-supervision.json`, importado al iniciar. Emisor: `http://localhost:8080/realms/supervision`.
 
-- Roles del realm: `admin`, `residente`, `gerente`, `maestro`, `almacenero`, `cliente`.
+- Roles del realm: `admin`, `residente`, `gerente`, `maestro`, `almacenero`, `cliente` `agente_ia` (501: solo la *service account* de `ia-agentes`; lo acepta únicamente `POST /mcp` de cada servicio) y `automatizacion` (201: solo la *service account* de `n8n`; lo aceptan únicamente las rutas de Finanzas que llama n8n).
 - Todos los tokens llevan la audiencia `plataforma-api` (mapper de audiencia en cada cliente).
-- Token de acceso: 5 minutos. Sesión SSO: 10 horas. Idioma: solo español. Tema de inicio de sesión: `supervision`.
+- Token de acceso: 5 minutos. Sesión SSO: 10 horas. Sesión *offline*: vale mientras no pase 30 días sin usarse (`offlineSessionIdleTimeout` 2592000 s, 101). Idioma: solo español. Tema de inicio de sesión: `supervision`.
 - Contraseñas: mínimo 8 caracteres, 1 mayúscula, 1 número, distinta del usuario. Bloqueo temporal tras 5 intentos fallidos.
 
 | Cliente | Tipo | Redirecciones | Uso |
 |---|---|---|---|
 | `erp` | público, PKCE S256 | `http://localhost:4200/*` | shell y microfrontends |
 | `portal` | público, PKCE S256 | `http://localhost:4300/*` | portal del cliente |
-| `app-obra` | público, PKCE S256 | `exp://*`, `appobra://*` | app de obra |
+| `app-obra` | público, PKCE S256; *scope* opcional `offline_access` (101: con `scope=openid offline_access` el *refresh token* es de tipo `Offline`) | `exp://*`, `appobra://*` | app de obra |
 | `gateway` | confidencial, *service account* con `realm-management: view-users` y `view-realm` | — | el gateway lista usuarios por rol (`view-realm` lo exige Keycloak para `GET /roles/{rol}/users`) y lee usuarios. Secreto **solo de desarrollo**: `gateway-secreto-solo-desarrollo` |
+| `ia-reportes` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con el rol de realm `gerente` | — | 401: la carga inicial del servicio de IA pide su token con *client credentials* (trae `gerente`, `azp = ia-reportes` y la audiencia `plataforma-api`) y solo hace `GET` a Obras, Materiales y Finanzas. Secreto en `IA_REPORTES_CLIENT_SECRET` de `.env` (el realm lo toma al importarse: `"secret": "${IA_REPORTES_CLIENT_SECRET}"`); se copia al `.env` de IA. Si cambia, se recrea Keycloak |
+| `ia-agentes` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con el rol de realm `agente_ia` | — | 501 y 502: el servicio de IA (`ia-worker`, host de los agentes) pide su token con *client credentials* (trae `agente_ia`, `azp = ia-agentes` y la audiencia `plataforma-api`; 5 minutos) para llamar a `POST /mcp` de Obras, Materiales, Finanzas e IA. Secreto en `IA_AGENTES_CLIENT_SECRET` de `.env` (el realm lo toma al importarse: `"secret": "${IA_AGENTES_CLIENT_SECRET}"`); se copia al `.env` de IA. Si cambia, se recrea Keycloak |
+| `n8n` | confidencial, solo *service account* (`standardFlowEnabled`, `implicitFlowEnabled` y `directAccessGrantsEnabled` en `false`) con los roles de realm `automatizacion` y `gerente` y `realm-management: view-users` | — | 201: los flujos de cobranza piden su token con *client credentials* (trae `automatizacion` y `gerente`, `azp = n8n` y la audiencia `plataforma-api`; 5 minutos). `automatizacion` para `GET /cobros/recordatorios`, `POST /cobros/{id}/envios` y `POST /cobros/{id}/nota-cobro` de Finanzas; `gerente` para leer `GET /obras/{id}`, `GET /planillas/{id}` y `GET /cobros/{id}`; `view-users` para `GET /admin/realms/supervision/users/{id}` (nombre y correo del cliente; segunda excepción a la API de administración, junto al gateway). Secreto en `N8N_KEYCLOAK_SECRETO` de `.env` (el realm lo toma al importarse: `"secret": "${N8N_KEYCLOAK_SECRETO}"`; n8n lo recibe por `CREDENTIALS_OVERWRITE_DATA`). Si la variable falta, el `entrypoint` de `keycloak` le pone uno al azar (nunca vacío: Keycloak aceptaría un secreto vacío) y el cliente queda sin uso. Si cambia, se recrea Keycloak |
 
 Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos-prueba.md` («Usuarios»), con su `id` fijo `a0000000-0000-4000-8000-0000000000NN`.
 
-Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`.
+**Importar para producción (601):** el realm toma de variables del contenedor de Keycloak lo que cambia según dónde corre, con el valor de desarrollo por defecto (sintaxis `${VARIABLE:valor por defecto}` de Keycloak al importar): así el mismo archivo sirve en desarrollo (sin definir nada) y en la «producción local» o la nube.
+
+| Variable | Qué fija en el realm | Por defecto (desarrollo) |
+|---|---|---|
+| `ERP_URL` | redirecciones (`ERP_URL/*`), origen web y regreso al cerrar sesión del cliente `erp` | `http://localhost:4200` |
+| `PORTAL_URL` | lo mismo para el cliente `portal` | `http://localhost:4300` |
+| `USUARIOS_PRUEBA_CLAVE` | contraseña de los 9 usuarios de prueba (en producción, distinta de `Prueba123!`, que está en el repositorio público) | `Prueba123!` |
+| `CLIENTE1_CORREO` | correo de `cliente1` (602: en la nube, un buzón real que recibe la nota de cobro y el aviso de la planilla) | `cliente1@correo.test` |
+| `KEYCLOAK_GATEWAY_CLIENT_SECRET` | secreto del cliente `gateway` (el mismo nombre que usa el gateway) | `gateway-secreto-solo-desarrollo` |
+| `IA_REPORTES_CLIENT_SECRET`, `IA_AGENTES_CLIENT_SECRET`, `N8N_KEYCLOAK_SECRETO` | secretos de los clientes de servicio (ya por variable, sin valor por defecto) | `infra/.env` |
+
+`KC_HOSTNAME` no es del realm sino del servidor: la dirección pública de Keycloak (URL completa, por ejemplo `https://keycloak.azure.localhost:8443`). Con ella el emisor de los tokens es siempre `KC_HOSTNAME/realms/supervision`, aunque el pedido entre por la red interna, y los servicios validan ese emisor. En desarrollo no se usa (`start-dev`, emisor `http://localhost:8080/realms/supervision`).
+
+Para obtener el token de un usuario desde un script (flujo real con PKCE): `node pruebas/token-usuario.mjs residente1 [cliente] [redirect]`. Desde otro script, `obtenerTokensUsuario(usuario, { clientId, redirectUri, scope })` devuelve la respuesta completa (por ejemplo, con `scope: 'openid offline_access'` y `clientId: 'app-obra'`, el *refresh token* `Offline` de la 101).
 
 ## PostgreSQL
 
 Bases `obras_db` y `finanzas_db` (`postgres/init.sql` en el contenedor; en la instalación local se crean una vez a mano con `CREATE DATABASE`). Cada servicio crea sus tablas con sus migraciones.
 
+`reportes_db` (401, servicio de IA) tiene **usuario propio** `ia`, con la contraseña `POSTGRES_IA_CLAVE` de `.env`, y es su dueño (crea las tablas con Alembic). En el contenedor lo hace `postgres/init-reportes.sh`; en la instalación local, a mano (README, «Base de reportes»). URL para el `.env` de IA: `postgresql+psycopg://ia:<POSTGRES_IA_CLAVE>@localhost:5433/reportes_db`.
+
+Rol de solo lectura **`ia_reportes_lector`** (503): `LOGIN` y `default_transaction_read_only = on`, contraseña `POSTGRES_IA_LECTOR_CLAVE` de `.env` (`postgres/lector-reportes.sql`; en el contenedor lo corre `init-reportes.sh`, en la instalación local o en un volumen anterior, el comando del README). Sus `SELECT` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` los da la migración `0002` del servicio de IA (nada sobre `evento_aplicado` ni `carga_inicial`). URL para el `.env` de IA: `IA_REPORTES_DB_URL_LECTURA=postgresql+psycopg://ia_reportes_lector:<POSTGRES_IA_LECTOR_CLAVE>@localhost:5433/reportes_db`.
+
 ## RabbitMQ: exchange, colas y enlaces
 
-Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`) y 010 (cola `notificaciones`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.
+Exchange `plataforma` (topic, durable). Colas durables clásicas, sin argumentos (los servicios que las declaran al conectarse deben usar los mismos). Fuente: `docs/contratos/eventos.md`, 401 (cola `ia`), 201 (colas `n8n.cobro-*` y `CobroPagado` en `ia`) y 010 (colas `n8n.stock-bajo` y `n8n.planilla-presentada`). Las importa `rabbitmq-init` desde `rabbitmq/definiciones.json`.
 
 | Cola | Enlaces (claves de enrutamiento) |
 |---|---|
 | `obras` | `evento.finanzas.ContratoRegistrado`, `evento.finanzas.ContratoRechazado`, `evento.finanzas.SaldoReservado`, `evento.finanzas.SaldoInsuficiente`, `evento.materiales.ConsumosCerrados`, `evento.materiales.CierreFallido`, `evento.finanzas.CobroEmitido`, `evento.finanzas.CobroFallido` |
 | `materiales` | `evento.obras.ObraRegistrada`, `comando.materiales.CerrarConsumos`, `comando.materiales.ReabrirConsumos` |
 | `finanzas` | `evento.obras.ObraRegistrada`, `comando.finanzas.ReservarSaldo`, `comando.finanzas.EmitirCobro`, `comando.finanzas.LiberarReserva` |
-| `ia` | `evento.obras.ObraRegistrada`, `evento.finanzas.ContratoRegistrado`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.finanzas.CobroEmitido`, `evento.materiales.MovimientoRegistrado` |
-| `notificaciones` | `evento.obras.ObraRegistrada`, `evento.obras.PlanillaPresentada`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.materiales.StockBajo`, `evento.finanzas.CobroVencido`, `evento.finanzas.ContratoRechazado` |
+| `ia` | `evento.obras.ObraRegistrada`, `evento.finanzas.ContratoRegistrado`, `evento.obras.PlanillaAprobada`, `evento.obras.PlanillaObservada`, `evento.finanzas.CobroEmitido`, `evento.materiales.MovimientoRegistrado`, `evento.finanzas.CobroPagado` (201) |
+| `n8n.cobro-emitido` | `evento.finanzas.CobroEmitido` (201: flujo «Enviar nota de cobro») |
+| `n8n.cobro-pagado` | `evento.finanzas.CobroPagado` (201: flujo «Enviar constancia de pago») |
+| `n8n.stock-bajo` | `evento.materiales.StockBajo` (010: flujo «Avisar stock bajo») |
+| `n8n.planilla-presentada` | `evento.obras.PlanillaPresentada` (010: flujo «Avisar planilla para revisar») |
 | `plataforma.fallidos` | ninguno: los servicios publican ahí directo (exchange por defecto, clave `plataforma.fallidos`) los mensajes que fallan 3 veces |
 
-Las colas `ia` y `notificaciones` existen desde la fase 1 para que ningún evento se pierda antes de que esos servicios existan.
+La cola `ia` existe desde la fase 1 para que ningún evento se pierda antes de que exista el servicio de IA. Comprobado en la 401 (31/10/2026): la cola `ia` tiene sus 6 enlaces, el usuario `ia` sus permisos y, sin consumidor, guarda los eventos persistentes hasta que el servicio de IA los lea (`pruebas/humo.mjs`; la prueba solo publica mensajes de prueba en colas vacías y sin consumidores, para no descartar mensajes reales).
+
+Las colas `n8n.*` las lee n8n con el nodo *RabbitMQ Trigger* sin declararlas («Assert Queue» desactivado) y confirma cada mensaje al terminar la ejecución, haya salido bien o mal («Delete From Queue When» = «Execution Finishes»): n8n no usa `x-intentos` ni `plataforma.fallidos`; una ejecución fallida queda en su panel para reintentarla.
+
+**Vencimiento de los avisos de la 010 (políticas, no argumentos):** `rabbitmq/definiciones.json` trae dos políticas (`apply-to: queues`, prioridad 0) con `message-ttl`: `n8n-stock-bajo-ttl` (`^n8n\.stock-bajo$`, 86 400 000 ms = 1 día) y `n8n-planilla-presentada-ttl` (`^n8n\.planilla-presentada$`, 604 800 000 ms = 7 días). Las colas se declaran en todos los perfiles, y sin el perfil `automatizacion` o sin Firebase (el flujo de stock no se publica) nadie las lee: sin vencimiento, al encender n8n o configurar Firebase días después saldrían de golpe todos los avisos viejos. Un «stock bajo» de más de un día ya no sirve (el stock cambió y el almacenero lo ve en la app); un correo de planilla para revisar sigue siendo útil unos días (el cliente tiene que revisarla igual), pero no semanas después. Van como política y no como `x-message-ttl` en los `arguments` de la cola para no cambiar la declaración de colas que ya existen (RabbitMQ rechaza volver a declararlas con otros argumentos, «inequivalent arg»); `rabbitmq-init` las crea o actualiza en cada arranque y la política vale también para los mensajes que ya estaban en la cola. Comprobado en `pruebas/humo.mjs`. Las colas `n8n.cobro-*` de la 201 no tienen vencimiento.
+
+La cola `notificaciones` y su usuario (versión anterior de la 010, servicio `services/notificaciones` que no se crea) se quitaron de las definiciones y de `rabbitmq/iniciar.sh` (02/11/2026). `rabbitmq-init` no borra nada: en un RabbitMQ que ya los tenía siguen ahí (la cola acumula los eventos de sus 7 enlaces sin que nadie los lea) hasta borrarlos a mano (README, «Avisos al celular y al cliente»).
+
+## n8n, correo y *push* (201 y 010, perfil `automatizacion`)
+
+- **n8n** (`http://localhost:5678`): flujos en `n8n/flujos/` con `id` fijo, importados al arrancar el contenedor. Los tres de cobranza (201) y «Avisar planilla para revisar» (010) se publican siempre; «Avisar stock bajo» y «Recordar diario» (010, *push*) solo con Firebase configurado (abajo). Llama a Finanzas (`FINANZAS_URL`, por defecto `http://host.docker.internal:8083`), a Obras (`OBRAS_URL`, `http://host.docker.internal:8081`), a Materiales (010, `MATERIALES_URL`, `http://host.docker.internal:8082`) y a Keycloak (`KEYCLOAK_URL=http://localhost:8080`, que dentro de su red es un reenvío a `keycloak:8080`: el emisor del token es el mismo que validan los servicios). Finanzas, Obras y Materiales deben escuchar en todas las interfaces (como para el perfil `ia`).
+- Lo que n8n llama de Finanzas: `GET /cobros/{id}`, `GET /cobros/recordatorios`, `POST /cobros/{id}/nota-cobro` (PDF) y `POST /cobros/{id}/envios`; de Obras: `GET /obras?estado=EN_EJECUCION` (010), `GET /obras/{id}`, `GET /obras/{id}/diario?desde=&hasta=` (010) y `GET /planillas/{id}`; de Materiales: `GET /materiales?tamano=100&pagina=N` (010, todas las páginas hasta encontrar el material del aviso); de Keycloak: `GET /admin/realms/supervision/users/{id}`. Todo con el token del cliente `n8n` (rol `gerente` para leer).
+- **Mailpit** (`http://localhost:8025`): recibe por SMTP (`mailpit:1025` dentro del Compose, `localhost:1025` desde la máquina) todos los correos de desarrollo; nunca salen a internet. Las pruebas leen su API (`GET /api/v1/messages`, `GET /api/v1/message/{ID}`, `GET /api/v1/message/{ID}/part/{PartID}`).
+- Remitente `COBRANZA_REMITENTE` y copia oculta y resumen a `COBRANZA_CORREO` (`cobranzas@constructora-andina.test` en desarrollo); nombre de la empresa en `EMPRESA_NOMBRE` («Constructora Andina»). El correo «Planilla para revisar» (010) va solo al cliente, sin copia, con el enlace `PORTAL_URL/planillas/{planillaId}` (`PORTAL_URL`, por defecto `http://localhost:4300`).
+- **Firebase Cloud Messaging** (010): `POST https://fcm.googleapis.com/v1/projects/{FIREBASE_PROYECTO_ID}/messages:send` (HTTPS por internet) a los temas `obra-{obraId}-almacenero` (stock bajo, `data { tipo: "STOCK_BAJO", obraId }`) y `obra-{obraId}-maestro` (diario, `data { tipo: "DIARIO", obraId }`), con `notification { title, body }` y `android.priority = high`. Lo autentica la credencial de n8n de tipo `googleApi` («Google Service Account API», con «Set up for use in HTTP Request node» y el alcance `https://www.googleapis.com/auth/firebase.messaging`): n8n firma un JWT con la clave privada de la cuenta de servicio y lo cambia por un token de Google en cada llamada. Variables en `.env`: `FIREBASE_PROYECTO_ID`, `FIREBASE_CUENTA_CORREO` (`client_email` de la clave JSON) y `FIREBASE_CLAVE_PRIVADA` (`private_key`, por `CREDENTIALS_OVERWRITE_DATA`). Sin las tres, los dos flujos de *push* se importan sin publicar.
+- **Repetidos (010):** los flujos de eventos de la 010 guardan el `id` del sobre de cada aviso enviado en los datos estáticos del flujo (los últimos 500) y no vuelven a enviar uno que ya está; los de la 201 lo consultan en Finanzas (`envios` del cobro).
+- **Planilla ya revisada (010):** «Avisar planilla para revisar» lee la planilla y, si ya no está `PRESENTADA` (el cliente la aprobó u observó antes de que n8n procesara el aviso), termina sin correo y anota el `id` del sobre como procesado.
+
+## Datos de prueba (011)
+
+`semilla/semilla.*` y `semilla/recargar.*` orquestan la carga; cada servicio carga **solo su base** con su propio comando, que infra llama desde la carpeta del proyecto (`OBRAS_DIR`, `FINANZAS_DIR`, `MATERIALES_DIR` de `.env`, por defecto las carpetas hermanas). Lo que infra espera de cada uno:
+
+| Servicio | Cargar | Vaciar (solo `recargar`) |
+|---|---|---|
+| Obras | `mvnw spring-boot:run -Dspring-boot.run.profiles=semilla` | el mismo comando con `-Dspring-boot.run.arguments=--semilla.modo=recargar` (vacía y carga en una transacción) |
+| Finanzas | `php artisan db:seed --class=DatosPruebaSeeder --force` (PHP 8.3 o más; en Windows el de Herd) | `php artisan datos-prueba:vaciar` |
+| Materiales | `npm run semilla` (Node 24) | `npm run semilla:vaciar` |
+
+- **Fecha D:** infra la calcula una vez (hoy en `America/La_Paz`, o la `SEMILLA_FECHA` que ya venga definida) y la pasa a los tres en la variable de entorno `SEMILLA_FECHA` (`AAAA-MM-DD`).
+- **Salida:** código 0 si cargó bien; distinto de 0 si falla o si su guarda se niega (producción o base no local). Infra se detiene en el primer servicio que falla.
+- **Resumen:** infra copia a su resumen final las líneas de la salida de cada comando que contienen la palabra «resumen» (sin distinguir mayúsculas) o la fecha usada como `D = AAAA-MM-DD`, así que cada servicio imprime sus conteos en una línea así (Finanzas: `Finanzas · datos de prueba con D = 2026-10-28: 3 contratos, 3 reservas, 3 cobros.`).
+- **Orden:** Obras → Finanzas → Materiales → fotos. En `recargar`, antes: Finanzas y Materiales se vacían, se vacían las colas de la plataforma y se borra el prefijo `fotos/` del bucket.
+- **Base de reportes (401):** `recargar` vacía `reportes_db` (`postgres/vaciar-reportes.sql`: las tablas `rpt_*`, `evento_aplicado` y `carga_inicial` que existan; nunca `alembic_version`) con el servicio `psql-cli` (perfil `herramientas`, usuario `ia`, `host.docker.internal:5433`); si no responde, avisa y sigue. No hay semilla propia de IA: al terminar, indica correr la carga inicial (`docker compose --profile ia-carga run --rm ia-carga-inicial` o `uv run python -m ia.carga_inicial` en `services/ia`).
+- **Eventos de prueba para IA (503):** `semilla/eventos-ia.mjs` publica en la cola `ia` (exchange por defecto, clave `ia`, encabezado `x-clave-origen = evento.materiales.MovimientoRegistrado`) el `MovimientoRegistrado` de las salidas 10033 y 20018 de Materiales, con id `fa000000-0000-4000-8000-0000000NNNNN` y `correlacionId` `fa000000-0000-4000-8000-000000000000`. `recargar` vacía `ia_db.consumo_atipico` (servicio `mongo-cli`) y al final pide la carga inicial y este script.
+- **Datos de prueba de los agentes (502):** `semilla/agentes.mjs` registra en Obras, por `POST /obras/{obraId}/diario` con el token de maestro1, 9 entradas del diario (ids `b2000000-0000-4000-8000-000000000ONN`; obra 2 con lluvias, obra 1 con días normales; fechas D − n) y comprueba el escenario con `GET` de Obras, Materiales, Finanzas e IA (gerente1). Obras solo tiene que aceptar el `POST` como desde Sincronización (103).
+- **Colas que vacía `recargar`** (API del panel, `DELETE /api/queues/%2F/{cola}/contents`, solo las que existan): `obras`, `materiales`, `finanzas`, `ia`, `plataforma.fallidos` y las `n8n.*` (201 y 010: sus mensajes viejos apuntan a cobros, planillas y obras borrados).
+- **Fotos:** `s3-cli` (perfil `herramientas`) sube `semilla/fotos/` a `s3://$S3_BUCKET/fotos/` con `aws s3 sync` y `recargar` borra ese prefijo. Un `S3_BUCKET` que no empiece con `supervision-dev-` se rechaza; si faltan el bucket o las claves, la semilla salta las fotos con un aviso y sigue (las filas de las fotos se cargan igual en Obras).
+- **Keycloak:** la semilla comprueba con la API de administración que los 9 usuarios existen con su `id`; si no, se detiene. `recargar` reimporta el realm (`docker compose up -d --force-recreate keycloak`).
+
+### Datos de demostración (601)
+
+- `semilla.ps1 -Entorno <archivo>` (`semilla.sh --entorno <archivo>`) lee ese archivo en lugar de `infra/.env` (por ejemplo `produccion-local/.env`). Con `SEMILLA_DEMO=si` en él, la semilla **carga** aunque no esté `SEMILLA_PERMITIDA=si` y acepta cualquier bucket (no solo `supervision-dev-…`). `recargar` **nunca** corre con `SEMILLA_DEMO=si` (sin excepción): en producción no se vacía nada.
+- En modo demostración, cada servicio carga su parte **con su imagen de producción** (`docker compose run --rm` en el grupo donde corre, con su configuración de producción y `SEMILLA_DEMO=si`), no desde la carpeta del proyecto:
+
+| Servicio | Comando en su imagen | Variable con el *compose* del grupo |
+|---|---|---|
+| Obras | el comando de la imagen con `SPRING_PROFILES_ACTIVE=prod,semilla` | `SEMILLA_COMPOSE_OBRAS` |
+| Finanzas | `php artisan db:seed --class=DatosPruebaSeeder --force` | `SEMILLA_COMPOSE_FINANZAS` |
+| Materiales | `node dist/semilla/main.js cargar` | `SEMILLA_COMPOSE_MATERIALES` |
+| Fotos | `s3-cli` (AWS CLI, con `AWS_ENDPOINT_URL` del S3 compatible) | `SEMILLA_COMPOSE_S3` |
+
+  Mover un servicio de grupo solo cambia su variable. Cada servicio recibe `SEMILLA_DEMO=si` y `SEMILLA_FECHA`; su guarda acepta la carga en modo producción o con una base no local, y sigue rechazando el vaciado.
+- Después, la carga inicial de la base de reportes (401) con el comando `ia-carga-inicial` de la imagen de IA.

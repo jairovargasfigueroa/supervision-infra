@@ -7,3 +7,14 @@ secretos/
 Thumbs.db
 .vscode/
 .idea/
+
+# 601 · Producción local: CA y certificados generados y frontends publicados (nunca se suben)
+produccion-local/certificados/
+produccion-local/sitios/
+
+# 602 · Nube: secretos, frontends publicados y datos de las máquinas (nunca se suben)
+nube/.env
+nube/sitios/
+nube/datos/
+nube/certificados/
+nube/.paquete-*.tar
