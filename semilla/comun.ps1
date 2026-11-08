@@ -35,6 +35,7 @@ function Linea($Objeto) {
 $script:Demo = $false
 $script:RutaEnv = Join-Path $Infra '.env'
 $script:Compose = @{}
+$script:ContextosDocker = @{}
 
 # infra/.env (o el archivo de -Entorno) como tabla (no se ejecuta: solo líneas NOMBRE=valor)
 function Leer-Env([string]$Ruta = (Join-Path $Infra '.env')) {
@@ -135,7 +136,16 @@ function Comprobar-Entorno([switch]$ConRabbitMQ, [string]$Entorno) {
             Materiales = Archivo-Del-Entorno $envInfra 'SEMILLA_COMPOSE_MATERIALES'
         }
         if ($fotos) { $Compose['S3'] = Archivo-Del-Entorno $envInfra 'SEMILLA_COMPOSE_S3' }
-        foreach ($pieza in $Compose.Keys) { Write-Host "ok       $pieza con su imagen ($($Compose[$pieza]))" }
+        # 602: en la nube, cada carga corre dentro de su máquina por un contexto de Docker (vacío = Docker local)
+        $script:ContextosDocker = @{
+            Obras      = $envInfra['SEMILLA_CONTEXTO_OBRAS']
+            Finanzas   = $envInfra['SEMILLA_CONTEXTO_FINANZAS']
+            Materiales = $envInfra['SEMILLA_CONTEXTO_MATERIALES']
+        }
+        foreach ($pieza in $Compose.Keys) {
+            $extra = if ($ContextosDocker[$pieza]) { ", contexto $($ContextosDocker[$pieza])" } else { '' }
+            Write-Host "ok       $pieza con su imagen ($($Compose[$pieza])$extra)"
+        }
         $config = @{ Env = $envInfra; Bucket = $bucket; Fotos = $fotos }
     } else {
         $php = (& php -r 'echo PHP_VERSION;') 2>$null
@@ -282,8 +292,10 @@ function Verificar-Usuarios {
 
 # 601: carga de un servicio con su imagen de producción (modo demostración), en el grupo donde corre:
 # docker compose run --rm --no-deps con SEMILLA_DEMO=si y la fecha D, más las variables propias del servicio
-function Ejecutar-En-Imagen([string]$Nombre, [string]$Archivo, [string]$Servicio, [string[]]$Variables, [string[]]$Comando) {
-    $argumentos = (Argumentos-Compose $Archivo) + @('run', '--rm', '--no-deps', '--no-TTY', '-e', 'SEMILLA_DEMO=si', '-e', "SEMILLA_FECHA=$env:SEMILLA_FECHA")
+# 602: con -Contexto corre en otro Docker (un contexto por SSH: la máquina de la nube); vacío, el Docker local.
+function Ejecutar-En-Imagen([string]$Nombre, [string]$Archivo, [string]$Servicio, [string[]]$Variables, [string[]]$Comando, [string]$Contexto) {
+    $prefijo = if ($Contexto) { @('--context', $Contexto) } else { @() }
+    $argumentos = $prefijo + (Argumentos-Compose $Archivo) + @('run', '--rm', '--no-deps', '--no-TTY', '-e', 'SEMILLA_DEMO=si', '-e', "SEMILLA_FECHA=$env:SEMILLA_FECHA")
     foreach ($variable in $Variables) { $argumentos += @('-e', $variable) }
     $argumentos += $Servicio
     if ($Comando) { $argumentos += $Comando }
@@ -311,15 +323,15 @@ function Cargar-Datos($Config, [string]$ModoObras = 'cargar') {
         # 601: modo demostración; solo carga, nunca recargar
         if ($ModoObras -ne 'cargar') { Detener 'Con SEMILLA_DEMO=si solo se carga: el vaciado está prohibido fuera de desarrollo.' }
         Paso 'Obras (imagen de producción, perfiles prod y semilla)'
-        $salida = Ejecutar-En-Imagen 'Obras' $Compose['Obras'] 'obras' @('SPRING_PROFILES_ACTIVE=prod,semilla') @()
+        $salida = Ejecutar-En-Imagen 'Obras' $Compose['Obras'] 'obras' @('SPRING_PROFILES_ACTIVE=prod,semilla') @() $ContextosDocker['Obras']
         $Resumen['Obras'] = Lineas-Resumen $salida
 
         Paso 'Finanzas (imagen de producción, DatosPruebaSeeder)'
-        $salida = Ejecutar-En-Imagen 'Finanzas' $Compose['Finanzas'] 'finanzas-api' @() @('php', 'artisan', 'db:seed', '--class=DatosPruebaSeeder', '--force')
+        $salida = Ejecutar-En-Imagen 'Finanzas' $Compose['Finanzas'] 'finanzas-api' @() @('php', 'artisan', 'db:seed', '--class=DatosPruebaSeeder', '--force') $ContextosDocker['Finanzas']
         $Resumen['Finanzas'] = Lineas-Resumen $salida
 
         Paso 'Materiales (imagen de producción, semilla cargar)'
-        $salida = Ejecutar-En-Imagen 'Materiales' $Compose['Materiales'] 'materiales' @() @('node', 'dist/semilla/main.js', 'cargar')
+        $salida = Ejecutar-En-Imagen 'Materiales' $Compose['Materiales'] 'materiales' @() @('node', 'dist/semilla/main.js', 'cargar') $ContextosDocker['Materiales']
         $Resumen['Materiales'] = Lineas-Resumen $salida
     } else {
         Paso "Obras (perfil semilla, modo $ModoObras)"

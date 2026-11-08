@@ -16,7 +16,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [ ] `lib/azure.mjs`: `crear azure` (proveedores, cuota, grupo de recursos, NSG, IP, red, VM y presupuesto). Además `encender` (con la regla del 22 a la IP actual), `apagar` (desasignar) y `estado` en Azure
 - [ ] `desplegar <nube>` (copia por `scp`, `.env` filtrado con permisos `600`, `pull`, Caddy primero, certificado de RabbitMQ y espera a que esté sano), `registros`, `ssh` y `contextos`
 - [x] `publicar-frontends.ps1` y `.sh`: opciones `--entorno` y `--destino`, y ajuste del `ngsw.json` con los remotos del entorno. `desplegar azure` lo usa
-- [ ] Semilla: `SEMILLA_CONTEXTO_OBRAS`, `_FINANZAS` y `_MATERIALES` en `comun.ps1` y `comun.sh` (vacías = Docker local); `s3-cli` contra S3 real con `AWS_ENDPOINT_URL` vacío
+- [x] Semilla: `SEMILLA_CONTEXTO_OBRAS`, `_FINANZAS` y `_MATERIALES` en `comun.ps1` y `comun.sh` (vacías = Docker local); `s3-cli` contra S3 real con `AWS_ENDPOINT_URL` vacío
 - [ ] `humo-despliegue.mjs`: `--sin-google`, Mailpit con autenticación básica, el envío `NOTA_COBRO` en Finanzas cuando el SMTP no es Mailpit, y la comprobación de puertos cerrados
 - [ ] `lib/google.mjs`: `crear google` (proyecto, API, *firewall*, IP, VM, `MONGO_IMAGEN` según `uname -r` y presupuesto), y `encender`, `apagar` y `estado` en Google
 - [ ] `nube/README.md` (qué cambia respecto del ensayo local, comandos, pasos manuales de Jairo y costos); `CLAUDE.md` y `docs/contratos.md` de infra
