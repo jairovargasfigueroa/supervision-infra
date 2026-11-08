@@ -19,7 +19,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Semilla: `SEMILLA_CONTEXTO_OBRAS`, `_FINANZAS` y `_MATERIALES` en `comun.ps1` y `comun.sh` (vacías = Docker local); `s3-cli` contra S3 real con `AWS_ENDPOINT_URL` vacío
 - [x] `humo-despliegue.mjs`: `--sin-google`, Mailpit con autenticación básica, el envío `NOTA_COBRO` en Finanzas cuando el SMTP no es Mailpit, y la comprobación de puertos cerrados
 - [ ] `lib/google.mjs`: `crear google` (proyecto, API, *firewall*, IP, VM, `MONGO_IMAGEN` según `uname -r` y presupuesto), y `encender`, `apagar` y `estado` en Google
-- [ ] `nube/README.md` (qué cambia respecto del ensayo local, comandos, pasos manuales de Jairo y costos); `CLAUDE.md` y `docs/contratos.md` de infra
+- [x] `nube/README.md` (qué cambia respecto del ensayo local, comandos, pasos manuales de Jairo y costos); `CLAUDE.md` y `docs/contratos.md` de infra
 - [ ] El ensayo local de la 601 sigue pasando completo: `levantar` y `humo-despliegue.mjs --completa`, 53 de 53
 
 ## Despliegue (pasos 2 a 7 del «Orden»)
