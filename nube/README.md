@@ -94,7 +94,7 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
 | IP fija (una por nube) | $0,005/h (~$3,60 al mes) | siempre |
 | Discos (32 GiB en Azure, 16 GiB en AWS) | unos pocos dólares al mes | siempre |
 
-Hay un presupuesto con avisos al 50, 80 y 100 % en cada nube (`NUBE_ALERTAS_CORREO`). La cuenta de prueba de Azure tiene además el límite de gasto: al acabarse el crédito apaga los recursos en lugar de cobrar.
+Con `NUBE_ALERTAS_CORREO` (opcional) se crea un presupuesto con avisos al 50, 80 y 100 % en cada nube. La cuenta de prueba de Azure tiene además el límite de gasto: al acabarse el crédito apaga los recursos en lugar de cobrar.
 
 ## Problemas comunes
 

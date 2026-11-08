@@ -1,10 +1,6 @@
 # 602 · Caddy de la nube de Azure (vm-plataforma): HTTPS en 443 (80 redirige) con un certificado de Let's Encrypt por
 # nombre (desafío HTTP). Publica Keycloak, el gateway, Obras, Finanzas, n8n, Mailpit (con autenticación básica), el
 # panel de RabbitMQ y los 5 frontends compilados (/sitios). Direcciones: https://<pieza>.{$DOMINIO}
-{
-	email {$ACME_CORREO}
-}
-
 import /etc/caddy/comun.caddy
 
 keycloak.{$DOMINIO} {

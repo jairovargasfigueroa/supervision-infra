@@ -132,8 +132,7 @@ function secretos() {
 
   env = leerEnv();
   const manuales = [
-    ['ACME_CORREO', 'tu correo, para Let\'s Encrypt'],
-    ['NUBE_ALERTAS_CORREO', 'tu correo, para los avisos de presupuesto'],
+    ['NUBE_ALERTAS_CORREO', 'opcional: tu correo, para los avisos de presupuesto'],
     ['CLIENTE1_CORREO', 'buzón real donde llega la nota de cobro de cliente1 (vacío: cliente1@correo.test)'],
     ['SMTP_USUARIO', 'el Gmail de la plataforma (sin él, el correo queda en Mailpit)'],
     ['SMTP_CLAVE', 'su contraseña de aplicación (16 letras)'],
