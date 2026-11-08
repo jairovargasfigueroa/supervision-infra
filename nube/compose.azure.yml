@@ -279,8 +279,8 @@ services:
       MATERIALES_URL: ${MATERIALES_URL}
       KEYCLOAK_URL: http://localhost:8080
       EMPRESA_NOMBRE: ${EMPRESA_NOMBRE:-Constructora Andina}
-      COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:?falta COBRANZA_REMITENTE en .env}
-      COBRANZA_CORREO: ${COBRANZA_CORREO:?falta COBRANZA_CORREO en .env}
+      COBRANZA_REMITENTE: ${COBRANZA_REMITENTE:-cobranzas@constructora-andina.test}
+      COBRANZA_CORREO: ${COBRANZA_CORREO:-cobranzas@constructora-andina.test}
       PORTAL_URL: ${PORTAL_URL}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PUERTO: ${SMTP_PUERTO:-}

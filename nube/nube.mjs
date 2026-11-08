@@ -134,9 +134,8 @@ function secretos() {
   const manuales = [
     ['ACME_CORREO', 'tu correo, para Let\'s Encrypt'],
     ['NUBE_ALERTAS_CORREO', 'tu correo, para los avisos de presupuesto'],
-    ['N8N_PROPIETARIO_CORREO', 'correo para entrar al panel de n8n'],
-    ['CLIENTE1_CORREO', 'buzón real donde llega la nota de cobro de cliente1'],
-    ['SMTP_USUARIO', 'el Gmail de la plataforma'],
+    ['CLIENTE1_CORREO', 'buzón real donde llega la nota de cobro de cliente1 (vacío: cliente1@correo.test)'],
+    ['SMTP_USUARIO', 'el Gmail de la plataforma (sin él, el correo queda en Mailpit)'],
     ['SMTP_CLAVE', 'su contraseña de aplicación (16 letras)'],
     ['COBRANZA_REMITENTE', 'el Gmail de la plataforma'],
     ['COBRANZA_CORREO', 'el Gmail de la plataforma'],
