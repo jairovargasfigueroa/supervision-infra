@@ -17,3 +17,4 @@ nube/.env
 nube/sitios/
 nube/datos/
 nube/certificados/
+nube/.paquete-*.tar
