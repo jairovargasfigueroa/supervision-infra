@@ -10,9 +10,9 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 
 | Nube | Máquina | Qué corre | Nombres |
 |---|---|---|---|
-| Azure (`brazilsouth`) | `vm-plataforma`, B2s (4 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
+| Azure (`northcentralus`, Chicago: la suscripción de prueba no permite máquinas pequeñas en São Paulo ni en Virginia) | `vm-plataforma`, B2als_v2 (4 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
 | AWS (`us-east-2`, la única región que permite la organización de la cuenta) | `vm-sincronizacion`, t3.micro (1 GiB) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
-| Google (`southamerica-east1`) | `vm-ia`, e2-medium (4 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
+| Google (`us-east5`, Columbus) | `vm-ia`, e2-medium (4 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
 
 ## Lo que hace falta en la PC
 
@@ -89,7 +89,7 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
 
 | Recurso | Precio | Se paga |
 |---|---|---|
-| Azure B2s en `brazilsouth` | $0,0672/h | encendida |
+| Azure B2als_v2 en `northcentralus` | $0,0468/h | encendida |
 | AWS t3.micro en `us-east-2` | $0,0104/h | encendida |
 | IP fija (una por nube) | $0,005/h (~$3,60 al mes) | siempre |
 | Discos (32 GiB en Azure, 16 GiB en AWS) | unos pocos dólares al mes | siempre |
@@ -100,5 +100,5 @@ Hay un presupuesto con avisos al 50, 80 y 100 % en cada nube (`NUBE_ALERTAS_CORR
 
 - **`desplegar azure` se queda esperando el certificado de RabbitMQ:** el DNS todavía no apunta a la máquina o no se propagó. Revisa con `nslookup rabbitmq.supervision.workflow-tramites.site` y con `node nube/nube.mjs registros azure caddy`.
 - **SSH rechazado:** cambió tu IP. `encender` y `desplegar` vuelven a abrir el 22 a la IP actual.
-- **La B2s se queda sin memoria:** en `nube/.env`, `AZURE_TAMANO=Standard_B2ms`; en el portal, desasignar, cambiar el tamaño y encender.
+- **La B2als_v2 se queda sin memoria:** en `nube/.env`, `AZURE_TAMANO=Standard_B2as_v2` (8 GiB); en el portal, desasignar, cambiar el tamaño y encender.
 - **Una máquina recreada con la misma IP:** `crear` olvida la huella SSH vieja (`ssh-keygen -R`).
