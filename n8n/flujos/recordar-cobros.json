@@ -220,7 +220,7 @@
       "credentials": {
         "smtp": {
           "id": "cred201Mailpit01",
-          "name": "SMTP · Mailpit"
+          "name": "SMTP"
         }
       },
       "retryOnFail": true,
@@ -357,7 +357,7 @@
       "credentials": {
         "smtp": {
           "id": "cred201Mailpit01",
-          "name": "SMTP · Mailpit"
+          "name": "SMTP"
         }
       },
       "retryOnFail": true,

@@ -74,6 +74,7 @@ Usuarios de prueba (contraseña `Prueba123!`, no temporal): los 9 de `docs/datos
 | `ERP_URL` | redirecciones (`ERP_URL/*`), origen web y regreso al cerrar sesión del cliente `erp` | `http://localhost:4200` |
 | `PORTAL_URL` | lo mismo para el cliente `portal` | `http://localhost:4300` |
 | `USUARIOS_PRUEBA_CLAVE` | contraseña de los 9 usuarios de prueba (en producción, distinta de `Prueba123!`, que está en el repositorio público) | `Prueba123!` |
+| `CLIENTE1_CORREO` | correo de `cliente1` (602: en la nube, un buzón real que recibe la nota de cobro y el aviso de la planilla) | `cliente1@correo.test` |
 | `KEYCLOAK_GATEWAY_CLIENT_SECRET` | secreto del cliente `gateway` (el mismo nombre que usa el gateway) | `gateway-secreto-solo-desarrollo` |
 | `IA_REPORTES_CLIENT_SECRET`, `IA_AGENTES_CLIENT_SECRET`, `N8N_KEYCLOAK_SECRETO` | secretos de los clientes de servicio (ya por variable, sin valor por defecto) | `infra/.env` |
 
