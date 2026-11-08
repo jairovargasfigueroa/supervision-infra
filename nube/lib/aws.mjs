@@ -22,7 +22,7 @@ import {
 } from './comun.mjs';
 
 const VM = 'vm-sincronizacion';
-const GRUPO_SEGURIDAD = 'sg-sincronizacion';
+const GRUPO_SEGURIDAD = 'supervision-sincronizacion'; // AWS no acepta nombres que empiecen con sg-
 const PAR_CLAVES = 'supervision-nube';
 const ROL = 'sincronizacion-ec2';
 const USUARIO_S3 = 'obras-s3';
