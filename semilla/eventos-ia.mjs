@@ -16,8 +16,10 @@
 // Uso: node semilla/eventos-ia.mjs [--entorno nube/.env]   publica y, si ia-worker consume la cola, espera y muestra
 //      el resultado. Sin --entorno, desarrollo (infra/.env con SEMILLA_PERMITIDA=si); con --entorno, la «producción
 //      local» o la nube con SEMILLA_DEMO=si (602: solo agrega eventos, nunca vacía; semilla/entorno-script.mjs).
-//      --todas (603): publica el MovimientoRegistrado de TODAS las salidas de las obras 1 a 6 (con la historia de
-//      demostración), en orden cronológico; id de evento fa000000-… con el número del movimiento.
+//      --todas (603): publica además el MovimientoRegistrado de todas las salidas de las obras 4 a 6 (la historia de
+//      demostración), en orden cronológico; id de evento fa000000-… con el número del movimiento. Las obras 1 a 3 solo
+//      con las dos de arriba: sus salidas son grandes lotes y, junto a las salidas diarias de la historia, el modelo
+//      las marcaría casi todas como raras (falsos positivos).
 // Node 24, sin dependencias.
 import { entornoDelScript } from './entorno-script.mjs';
 
@@ -31,7 +33,8 @@ const CLAVE = 'evento.materiales.MovimientoRegistrado';
 // Mismo flujo para todos los eventos de esta carga (correlacionId del sobre)
 const CORRELACION = 'fa000000-0000-4000-8000-000000000000';
 const TODAS = process.argv.includes('--todas');
-const OBRAS_HISTORIA = [1, 2, 3, 4, 5, 6];
+const OBRAS_HISTORIA = [4, 5, 6];
+const OBRAS_RESUMEN = [1, 2, 3, 4, 5, 6];
 
 const obra = (n) => `b0000000-0000-4000-8000-00000000000${n}`;
 const movimiento = (numero) => `f0000000-0000-4000-8000-0000000${numero}`;
@@ -173,16 +176,16 @@ async function main() {
         });
       }
     }
-    eventos.sort((a, b) => a.registradoEn.localeCompare(b.registradoEn));
   }
-  for (const salida of TODAS ? [] : SALIDAS) {
+  for (const salida of SALIDAS) {
     const movimientos = await todasLasPaginas(`/obras/${obra(salida.obra)}/movimientos`, token);
     const mov = movimientos.find((m) => m.id === movimiento(salida.numero));
     if (!mov) salir(`No está el movimiento ${salida.numero} (${movimiento(salida.numero)}) en Materiales: corre antes ./semilla/semilla.ps1.`);
     if (mov.tipo !== 'SALIDA') salir(`El movimiento ${salida.numero} no es una salida: revisa la semilla de Materiales.`);
     const material = materiales.get(mov.materialId);
-    eventos.push({ salida, evento: armarEvento(salida.numero, { ...mov, obraId: obra(salida.obra) }, material?.precioReferencial ?? null) });
+    eventos.push({ salida, registradoEn: mov.registradoEn, evento: armarEvento(salida.numero, { ...mov, obraId: obra(salida.obra) }, material?.precioReferencial ?? null) });
   }
+  if (TODAS) eventos.sort((a, b) => a.registradoEn.localeCompare(b.registradoEn));
 
   let publicados = 0;
   for (const { salida, evento } of eventos) {
@@ -205,7 +208,7 @@ async function main() {
   if (TODAS) {
     // Resumen por obra: consumos atípicos que detectó el modelo (403); el token dura 5 minutos, se pide otro
     token = await tokenDe('gerente1');
-    for (const n of OBRAS_HISTORIA) {
+    for (const n of OBRAS_RESUMEN) {
       try {
         const lista = await pedirJson(`${IA}/consumos-atipicos?obraId=${obra(n)}`, token);
         console.log(`ok       obra ${n}: ${lista.length} consumos atípicos${lista.length ? ` (${lista.map((c) => `${c.puntaje}`).join(', ')})` : ''}`);
