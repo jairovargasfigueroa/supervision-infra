@@ -44,7 +44,7 @@ jobs:
 
       - name: Docker Compose de la nube (azure, google y aws, 602)
         run: |
-          sed -E 's/^([A-Z_0-9]+)=$/=valor-de-prueba/' nube/.env.example > nube/.env
+          sed -E 's/^([A-Z_0-9]+)=$/\1=valor-de-prueba/' nube/.env.example > nube/.env
           for nube in azure google aws; do
             echo "nube/compose.$nube.yml"
             docker compose -f "nube/compose.$nube.yml" --env-file nube/.env --profile '*' config -q
