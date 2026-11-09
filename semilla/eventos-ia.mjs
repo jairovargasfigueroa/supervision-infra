@@ -13,19 +13,13 @@
 // inbox (evento_aplicado): correrlo otra vez no repite nada; después de recargar (que vacía reportes_db y
 // consumo_atipico) se vuelven a aplicar. Va DESPUÉS de la semilla y de la carga inicial, con ia-worker corriendo.
 //
-// Uso: node semilla/eventos-ia.mjs            publica y, si ia-worker consume la cola, espera y muestra el resultado
-// Solo desarrollo: se niega sin SEMILLA_PERMITIDA=si en infra/.env. Node 24, sin dependencias.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { obtenerTokenUsuario } from '../pruebas/token-usuario.mjs';
+// Uso: node semilla/eventos-ia.mjs [--entorno nube/.env]   publica y, si ia-worker consume la cola, espera y muestra
+//      el resultado. Sin --entorno, desarrollo (infra/.env con SEMILLA_PERMITIDA=si); con --entorno, la «producción
+//      local» o la nube con SEMILLA_DEMO=si (602: solo agrega eventos, nunca vacía; semilla/entorno-script.mjs).
+// Node 24, sin dependencias.
+import { entornoDelScript } from './entorno-script.mjs';
 
-const env = Object.fromEntries(
-  readFileSync(fileURLToPath(new URL('../.env', import.meta.url)), 'utf8')
-    .split(/\r?\n/)
-    .filter((linea) => linea && !linea.startsWith('#') && linea.includes('='))
-    .map((linea) => [linea.slice(0, linea.indexOf('=')).trim(), linea.slice(linea.indexOf('=') + 1).trim()]),
-);
-const valor = (nombre, porDefecto) => env[nombre] || porDefecto;
+const { env, valor, token: tokenDe, descripcion } = await entornoDelScript('eventos-ia');
 
 const RABBITMQ = valor('RABBITMQ_PANEL_URL', 'http://localhost:15672');
 const MATERIALES = valor('MATERIALES_URL', 'http://localhost:8082');
@@ -140,11 +134,10 @@ async function esperarCola(limiteMs) {
 }
 
 async function main() {
-  if (valor('SEMILLA_PERMITIDA', '') !== 'si') salir('Falta SEMILLA_PERMITIDA=si en infra/.env: los eventos de prueba solo van en desarrollo.');
-
+  console.log(`Eventos de prueba de IA (403) · ${descripcion}`);
   let token;
   try {
-    token = await obtenerTokenUsuario('gerente1');
+    token = await tokenDe('gerente1');
   } catch (error) {
     salir(`No se pudo obtener el token de gerente1 en Keycloak: ${error.message}`);
   }

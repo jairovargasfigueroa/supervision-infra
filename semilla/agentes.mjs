@@ -15,20 +15,14 @@
 //
 // Luego comprueba, con el token de gerente1 y por REST, cada caso del escenario y dice cuál falta (no lo fuerza).
 //
-// Uso: node semilla/agentes.mjs   (después de la semilla, la carga inicial y semilla/eventos-ia.mjs; con Obras,
-//      Materiales, Finanzas e IA levantados). SEMILLA_FECHA fija la fecha D como en la semilla.
-// Solo desarrollo: se niega sin SEMILLA_PERMITIDA=si en infra/.env. Node 24, sin dependencias.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { obtenerTokenUsuario } from '../pruebas/token-usuario.mjs';
+// Uso: node semilla/agentes.mjs [--entorno nube/.env]   (después de la semilla, la carga inicial y
+//      semilla/eventos-ia.mjs; con Obras, Materiales, Finanzas e IA levantados). SEMILLA_FECHA fija la fecha D como en
+//      la semilla. Sin --entorno, desarrollo (infra/.env con SEMILLA_PERMITIDA=si); con --entorno, la «producción
+//      local» o la nube con SEMILLA_DEMO=si (602: solo agrega entradas del diario, nunca vacía; entorno-script.mjs).
+// Node 24, sin dependencias.
+import { entornoDelScript } from './entorno-script.mjs';
 
-const env = Object.fromEntries(
-  readFileSync(fileURLToPath(new URL('../.env', import.meta.url)), 'utf8')
-    .split(/\r?\n/)
-    .filter((linea) => linea && !linea.startsWith('#') && linea.includes('='))
-    .map((linea) => [linea.slice(0, linea.indexOf('=')).trim(), linea.slice(linea.indexOf('=') + 1).trim()]),
-);
-const valor = (nombre, porDefecto) => process.env[nombre] || env[nombre] || porDefecto;
+const { valor, token: tokenDe, descripcion } = await entornoDelScript('agentes');
 
 const OBRAS = valor('OBRAS_URL', 'http://localhost:8081');
 const MATERIALES = valor('MATERIALES_URL', 'http://localhost:8082');
@@ -162,15 +156,14 @@ async function comprobar(token) {
 }
 
 async function main() {
-  if (valor('SEMILLA_PERMITIDA', '') !== 'si') salir('Falta SEMILLA_PERMITIDA=si en infra/.env: los datos de prueba solo van en desarrollo.');
   const d = fechaD();
-  console.log(`Datos de prueba de los agentes (502) · D = ${d}`);
+  console.log(`Datos de prueba de los agentes (502) · D = ${d} · ${descripcion}`);
 
   let tokenMaestro;
   let tokenGerente;
   try {
-    tokenMaestro = await obtenerTokenUsuario('maestro1');
-    tokenGerente = await obtenerTokenUsuario('gerente1');
+    tokenMaestro = await tokenDe('maestro1');
+    tokenGerente = await tokenDe('gerente1');
   } catch (error) {
     salir(`No se pudo obtener el token de maestro1 o gerente1 en Keycloak: ${error.message}`);
   }

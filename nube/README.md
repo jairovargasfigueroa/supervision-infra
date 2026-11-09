@@ -32,7 +32,8 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 7. **Google:** `node nube/nube.mjs crear google`. Crea el proyecto `supervision-obras` (si ese ID ya lo usa otra cuenta, con un sufijo que guarda en `nube/.env`), lo une a la cuenta de facturación de los créditos (si hay varias, la de `GOOGLE_FACTURACION`), activa Compute Engine y crea la red `vpc-supervision` con su *firewall*, la IP fija y `vm-ia`; al final fija `MONGO_IMAGEN` según el *kernel*. Después sus dos registros DNS y `desplegar google`. Luego:
    - Datos de demostración: `node nube/nube.mjs contextos` y `./semilla/semilla.ps1 -Entorno nube/.env`. La carga de cada servicio corre en su máquina por SSH; las fotos suben a S3 desde la PC.
    - Carga inicial de reportes, en la máquina de Google (por el contexto de Docker, Compose tomaría las rutas de la PC para los volúmenes de PostgreSQL): `ssh supervision-google "docker compose -f /opt/supervision/nube/compose.google.yml --profile carga run --rm ia-carga-inicial"`.
-   - Prueba completa: `node pruebas/humo-despliegue.mjs --entorno nube/.env --completa`.
+   - Escenario de los agentes y consumos atípicos: `node semilla/eventos-ia.mjs --entorno nube/.env` y `node semilla/agentes.mjs --entorno nube/.env`.
+   - Prueba completa: `node pruebas/humo-despliegue.mjs --entorno nube/.env --completa`. **Crea datos**: una obra «Humo 601 …» con su planilla aprobada y su cobro cada vez que corre. Córrela antes de una demostración solo si después vuelves a dejar los datos limpios (sección siguiente); para revisar el despliegue sin crear nada, sin `--completa`.
    - El APK que apunta a la nube: `scripts/apk-nube.ps1` de app-obra.
 8. **Al terminar:** `node nube/nube.mjs apagar todas`.
 
@@ -55,6 +56,18 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
 | `contextos` | contextos de Docker `supervision-<nube>` por SSH (los usa la semilla) |
 
 **Volver atrás un servicio:** en `nube/.env`, `<SERVICIO>_ETIQUETA=sha-<7>` (por ejemplo `OBRAS_ETIQUETA=sha-1a2b3c4`, la etiqueta anterior en GHCR) y `desplegar` de su nube.
+
+## Volver a dejar los datos de demostración limpios
+
+Para empezar de cero antes de una demostración (borra lo que se registró al probar, también las obras «Humo 601 …»). Por diseño, `semilla` en modo demostración solo carga y `recargar` nunca corre contra la nube: el vaciado se hace a mano por SSH, igual que el de cada servicio en desarrollo. No se tocan Keycloak (su base `keycloak_db`), n8n, Firebase, los certificados ni las fotos de demostración del bucket.
+
+1. **Azure:** `TRUNCATE … RESTART IDENTITY CASCADE` de todas las tablas de `obras_db` salvo `flyway_schema_history` y de `finanzas_db` salvo `migrations` (en `supervision-azure-postgres-1`, con `psql -U $POSTGRES_USER`, la lista de tablas sale de `pg_tables`); vaciar las colas con mensajes (`rabbitmqctl -q list_queues -p / name messages` y `purge_queue`) y Mailpit (`DELETE /api/v1/messages` con su usuario y clave).
+2. **Google:** `deleteMany({})` de las colecciones de `materiales_db` y, en `ia_db`, de `consulta_reporte`, `conversacion_reporte`, `receta_cache`, `limite_consulta`, `ejecucion_agente`, `sugerencia`, `prediccion` y `consumo_atipico` (en `supervision-google-mongo-1`); `reportes_db` con `postgres/vaciar-reportes.sql` (`ssh supervision-google 'docker exec -i supervision-google-postgres-reportes-1 sh -c "psql -U \$POSTGRES_USER -d reportes_db"' < postgres/vaciar-reportes.sql`).
+3. **Cargar:** `node nube/nube.mjs contextos`, `./semilla/semilla.ps1 -Entorno nube/.env` (D = hoy) y la carga inicial de reportes por SSH (paso 7 de «Primera vez»), que también recalcula el riesgo.
+4. **Escenario:** `node semilla/eventos-ia.mjs --entorno nube/.env` y `node semilla/agentes.mjs --entorno nube/.env` (debe decir «El escenario está completo»).
+5. **Revisar:** `node pruebas/humo-despliegue.mjs --entorno nube/.env` (sin `--completa`) y el tablero: 3 obras, Las Lomas en riesgo, 1 cobro vencido por Bs 290.134,80.
+
+En el celular, después de vaciar: cerrar sesión en la app y volver a entrar, para que descargue los datos nuevos.
 
 ## Lo que se hace a mano
 

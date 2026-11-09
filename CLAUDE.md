@@ -37,8 +37,8 @@ node pruebas/cobranza.mjs         # 201: cobranza automática de punta a punta (
 node pruebas/avisos.mjs           # 010: correo «Planilla para revisar» en Mailpit y sin repetidos (con Obras, n8n y Mailpit)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
-node semilla/eventos-ia.mjs       # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
-node semilla/agentes.mjs          # 502: entradas del diario de prueba (Obras, como maestro1) y comprobación del escenario de los agentes
+node semilla/eventos-ia.mjs [--entorno nube/.env]   # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
+node semilla/agentes.mjs [--entorno nube/.env]      # 502: entradas del diario de prueba (Obras, como maestro1) y comprobación del escenario de los agentes
 docker compose config -q          # valida el docker-compose.yml
 ./produccion-local/levantar.ps1 [-Grupo azure|google|aws] [-DesdeGhcr]   # 601: ensayo con imágenes de producción (README)
 ./produccion-local/bajar.ps1 [-Grupo …] [-Datos]                         # 601: lo baja (con -Datos borra sus volúmenes)
@@ -85,6 +85,7 @@ semilla/
   plataforma.mjs          fecha D, piezas que responden, usuarios de Keycloak y colas (Node 24, lo usan los dos lenguajes)
   eventos-ia.mjs          503: vuelve a publicar en la cola ia el MovimientoRegistrado de las salidas 10033 y 20018
   agentes.mjs             502: diario de obra de prueba por la API de Obras y comprobación del escenario de los agentes
+  entorno-script.mjs      602: entorno de eventos-ia.mjs y agentes.mjs (infra/.env o --entorno con SEMILLA_DEMO=si)
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 produccion-local/         601: ensayo con imágenes de producción en tres grupos (compose.azure|google|aws.yml, caddy/,
                           certificados, publicar-frontends, levantar y bajar; README «Producción local»)
@@ -98,7 +99,7 @@ docs/                     estructura, contratos y tareas por funcionalidad
 
 ## Reglas del proyecto
 
-- **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»). **Única excepción (601):** `semilla -Entorno <archivo>` con `SEMILLA_DEMO=si` en ese archivo carga los datos de demostración en la «producción local» o en la nube; `recargar` nunca corre con `SEMILLA_DEMO=si`.
+- **Datos de prueba solo en desarrollo:** `semilla` y `recargar` se niegan sin `SEMILLA_PERMITIDA=si` en `.env` y con un `S3_BUCKET` que no empiece con `supervision-dev-`. No los corras contra bases con datos que quieras conservar (`recargar` las vacía). Lo que espera infra de cada servicio está en `docs/contratos.md` («Datos de prueba»). **Única excepción (601):** `semilla -Entorno <archivo>` con `SEMILLA_DEMO=si` en ese archivo carga los datos de demostración en la «producción local» o en la nube, y `semilla/eventos-ia.mjs` y `semilla/agentes.mjs` con `--entorno <archivo>` completan su escenario (602: solo agregan, con ids fijos); `recargar` nunca corre con `SEMILLA_DEMO=si`. Para dejar limpios los datos de la nube: `nube/README.md`, «Volver a dejar los datos de demostración limpios».
 - **La nube (602)** se maneja solo con `nube/nube.mjs`; `nube/.env` (secretos de producción) nunca se sube y Jairo guarda una copia. Los *scripts* de `nube/` son de Node (no `.ps1` y `.sh`) porque llaman a CLI que corren igual en los dos sistemas.
 - **La «producción local» no toca el desarrollo:** proyectos de Compose `supervision-azure`, `supervision-google` y `supervision-aws`, con sus propias redes, volúmenes y puertos (8443, 9443, 10443 y 5671); nunca bajes ni recrees el proyecto `supervision` desde sus scripts. Solo comparte, en modo lectura, el volumen del modelo de Ollama.
 - Versiones de imágenes fijas (nunca `latest`); se cambian en `docs/entorno-local.md` y aquí a la vez.
