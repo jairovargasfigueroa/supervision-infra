@@ -37,8 +37,9 @@ node pruebas/cobranza.mjs         # 201: cobranza automática de punta a punta (
 node pruebas/avisos.mjs           # 010: correo «Planilla para revisar» en Mailpit y sin repetidos (con Obras, n8n y Mailpit)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
-node semilla/eventos-ia.mjs [--entorno nube/.env]   # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker
-node semilla/agentes.mjs [--entorno nube/.env]      # 502: entradas del diario de prueba (Obras, como maestro1) y comprobación del escenario de los agentes
+node semilla/eventos-ia.mjs [--entorno nube/.env] [--todas]   # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker; --todas (603): todas las salidas
+node semilla/agentes.mjs [--entorno nube/.env]      # 502: entradas del diario de prueba (Obras, como maestro1) y comprobación del escenario de los agentes; con SEMILLA_HISTORIA=si (603), el diario de las seis obras
+node semilla/historia/generar.mjs                   # 603: vuelve a generar la historia de demostración (archivos *-historia.json de Obras, Finanzas y Materiales y sus fotos)
 docker compose config -q          # valida el docker-compose.yml
 ./produccion-local/levantar.ps1 [-Grupo azure|google|aws] [-DesdeGhcr]   # 601: ensayo con imágenes de producción (README)
 ./produccion-local/bajar.ps1 [-Grupo …] [-Datos]                         # 601: lo baja (con -Datos borra sus volúmenes)
@@ -86,6 +87,7 @@ semilla/
   eventos-ia.mjs          503: vuelve a publicar en la cola ia el MovimientoRegistrado de las salidas 10033 y 20018
   agentes.mjs             502: diario de obra de prueba por la API de Obras y comprobación del escenario de los agentes
   entorno-script.mjs      602: entorno de eventos-ia.mjs y agentes.mjs (infra/.env o --entorno con SEMILLA_DEMO=si)
+  historia/               603: generar.mjs (historia de las obras 4 a 6 → *-historia.json de los tres servicios y sus fotos) y diario.mjs (diario de las seis obras)
   fotos/                  generar-fotos.ps1 y las 10 fotos en {obraId}/{fotoId}.jpg
 produccion-local/         601: ensayo con imágenes de producción en tres grupos (compose.azure|google|aws.yml, caddy/,
                           certificados, publicar-frontends, levantar y bajar; README «Producción local»)
