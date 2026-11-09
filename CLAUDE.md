@@ -37,7 +37,7 @@ node pruebas/cobranza.mjs         # 201: cobranza automática de punta a punta (
 node pruebas/avisos.mjs           # 010: correo «Planilla para revisar» en Mailpit y sin repetidos (con Obras, n8n y Mailpit)
 ./semilla/semilla.ps1             # carga los datos de prueba (011); idempotente; SEMILLA_FECHA fija la fecha D
 ./semilla/recargar.ps1 [-Si]      # vacía y vuelve a cargar los datos de prueba con la fecha del día (pide confirmación)
-node semilla/eventos-ia.mjs [--entorno nube/.env] [--todas]   # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker; --todas (603): todas las salidas
+node semilla/eventos-ia.mjs [--entorno nube/.env] [--todas]   # 503: eventos de prueba para IA (consumos atípicos), después de la carga inicial y con ia-worker; --todas (603): también todas las salidas de las obras 4 a 6
 node semilla/agentes.mjs [--entorno nube/.env]      # 502: entradas del diario de prueba (Obras, como maestro1) y comprobación del escenario de los agentes; con SEMILLA_HISTORIA=si (603), el diario de las seis obras
 node semilla/historia/generar.mjs                   # 603: vuelve a generar la historia de demostración (archivos *-historia.json de Obras, Finanzas y Materiales y sus fotos)
 docker compose config -q          # valida el docker-compose.yml
