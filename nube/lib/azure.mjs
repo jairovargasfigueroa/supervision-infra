@@ -76,7 +76,7 @@ export async function crearAzure() {
   }
 
   paso(`Cuota de la familia B en ${r}`);
-  const tamano = variable('AZURE_TAMANO', env) || 'Standard_B2als_v2';
+  const tamano = variable('AZURE_TAMANO', env) || 'Standard_D4as_v5';
   const usos = az(['vm', 'list-usage', '-l', r, '-o', 'json'], { json: true });
   for (const nombre of ['cores', 'standardBSFamily']) {
     const uso = usos.find((u) => u.name.value === nombre);

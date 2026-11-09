@@ -52,7 +52,7 @@ export function ipGoogle(env = leerEnv()) {
   return gcp(env, ['compute', 'addresses', 'describe', IP, '--region', region(env)], { permitirFallo: true })?.address ?? '';
 }
 
-/** Estado de la máquina («running (e2-medium)», «terminated (e2-medium)» = detenida…) o null si no existe. */
+/** Estado de la máquina («running (e2-standard-4)», «terminated (…)» = detenida…) o null si no existe. */
 export function estadoGoogle(env = leerEnv()) {
   const datos = gcp(env, ['compute', 'instances', 'describe', VM, '--zone', zona(env)], { permitirFallo: true });
   return datos ? `${datos.status.toLowerCase()} (${datos.machineType.split('/').pop()})` : null;
@@ -102,7 +102,7 @@ function asegurarFacturacion(id) {
 export async function crearGoogle() {
   let env = leerEnv();
   ok(`cuenta ${sesion()}`);
-  const tipo = variable('GOOGLE_TIPO', env) || 'e2-medium';
+  const tipo = variable('GOOGLE_TIPO', env) || 'e2-standard-4';
 
   paso('Proyecto, facturación y API de Compute Engine');
   const id = asegurarProyecto(env);

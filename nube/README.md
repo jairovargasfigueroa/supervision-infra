@@ -10,9 +10,9 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 
 | Nube | Máquina | Qué corre | Nombres |
 |---|---|---|---|
-| Azure (`northcentralus`, Chicago: la suscripción de prueba no permite máquinas pequeñas en São Paulo ni en Virginia) | `vm-plataforma`, B2als_v2 (4 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
-| AWS (`us-east-2`, la única región que permite la organización de la cuenta) | `vm-sincronizacion`, t3.micro (1 GiB) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
-| Google (`us-east5`, Columbus) | `vm-ia`, e2-medium (4 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
+| Azure (`northcentralus`, Chicago: la suscripción de prueba no permite máquinas pequeñas en São Paulo ni en Virginia) | `vm-plataforma`, D4as_v5 (4 vCPU, 16 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
+| AWS (`us-east-2`, la única región que permite la organización de la cuenta) | `vm-sincronizacion`, m7i-flex.large (2 vCPU, 8 GiB; el plan gratuito de AWS solo permite algunos tamaños) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
+| Google (`us-east5`, Columbus) | `vm-ia`, e2-standard-4 (4 vCPU, 16 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
 
 ## Lo que hace falta en la PC
 
@@ -92,8 +92,9 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
 
 | Recurso | Precio | Se paga |
 |---|---|---|
-| Azure B2als_v2 en `northcentralus` | $0,0468/h | encendida |
-| AWS t3.micro en `us-east-2` | $0,0104/h | encendida |
+| Azure D4as_v5 en `northcentralus` | ~$0,17/h | encendida |
+| AWS m7i-flex.large en `us-east-2` | ~$0,10/h (créditos del plan gratuito) | encendida |
+| Google e2-standard-4 en `us-east5` | ~$0,13/h (créditos de la prueba) | encendida |
 | IP fija (una por nube) | $0,005/h (~$3,60 al mes) | siempre |
 | Discos (32 GiB en Azure, 16 GiB en AWS) | unos pocos dólares al mes | siempre |
 
@@ -103,5 +104,5 @@ Con `NUBE_ALERTAS_CORREO` (opcional) se crea un presupuesto con avisos al 50, 80
 
 - **`desplegar azure` se queda esperando el certificado de RabbitMQ:** el DNS todavía no apunta a la máquina o no se propagó. Revisa con `nslookup rabbitmq.supervision.workflow-tramites.site` y con `node nube/nube.mjs registros azure caddy`.
 - **SSH rechazado:** cambió tu IP. `encender` y `desplegar` vuelven a abrir el 22 a la IP actual (en las tres nubes).
-- **La B2als_v2 se queda sin memoria:** en `nube/.env`, `AZURE_TAMANO=Standard_B2as_v2` (8 GiB); en el portal, desasignar, cambiar el tamaño y encender.
+- **Cambiar el tamaño de una máquina:** con la máquina apagada, `az vm resize -g rg-supervision -n vm-plataforma --size <tamaño>`, `gcloud compute instances set-machine-type vm-ia --zone us-east5-a --machine-type <tipo> --project <GOOGLE_PROYECTO>` o `aws ec2 modify-instance-attribute --instance-id <id> --instance-type Value=<tipo>`, y el mismo valor en `AZURE_TAMANO`, `GOOGLE_TIPO` o `AWS_TIPO` de `nube/.env`. Azure deja hasta 4 vCPU por región en la suscripción de prueba y el plan gratuito de AWS solo ciertos tipos (`aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`).
 - **Una máquina recreada con la misma IP:** `crear` olvida la huella SSH vieja (`ssh-keygen -R`).
