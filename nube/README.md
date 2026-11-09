@@ -19,7 +19,7 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 - Node 24, Docker Desktop (para generar los hashes y para la semilla) y OpenSSH (viene con Windows 11).
 - CLI de Azure con sesión: `az login` (la cuenta de los créditos).
 - CLI de AWS con el usuario IAM `jairo-cli`: `aws configure`. Los *scripts* usan `AWS_REGION` de `nube/.env` (`us-east-2`: la organización de la cuenta bloquea las demás regiones).
-- CLI de Google (`gcloud`), cuando esté la cuenta.
+- CLI de Google con sesión: `winget install -e --id Google.CloudSDK` y `gcloud auth login` (la cuenta de los créditos). Los *scripts* pasan `--project` con `GOOGLE_PROYECTO` en cada llamada: no cambian el proyecto por defecto de `gcloud`.
 
 ## Primera vez (en este orden)
 
@@ -29,7 +29,7 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 4. **Azure:** `node nube/nube.mjs crear azure`. Después pon los registros DNS (paso «DNS en Namecheap») y `node nube/nube.mjs desplegar azure`, que compila y copia los frontends, espera el certificado de RabbitMQ y levanta todo.
 5. **AWS, máquina:** `node nube/nube.mjs crear aws`, el registro DNS de `sincronizacion` y `node nube/nube.mjs desplegar aws`.
 6. **Prueba de humo sin Google:** `node pruebas/humo-despliegue.mjs --entorno nube/.env --sin-google`.
-7. **Google** (cuando esté la cuenta): `crear google`, sus dos registros DNS y `desplegar google`. Después:
+7. **Google:** `node nube/nube.mjs crear google`. Crea el proyecto `supervision-obras` (si ese ID ya lo usa otra cuenta, con un sufijo que guarda en `nube/.env`), lo une a la cuenta de facturación de los créditos (si hay varias, la de `GOOGLE_FACTURACION`), activa Compute Engine y crea la red `vpc-supervision` con su *firewall*, la IP fija y `vm-ia`; al final fija `MONGO_IMAGEN` según el *kernel*. Después sus dos registros DNS y `desplegar google`. Luego:
    - Datos de demostración: `node nube/nube.mjs contextos` y `./semilla/semilla.ps1 -Entorno nube/.env`. La carga de cada servicio corre en su máquina por SSH; las fotos suben a S3 desde la PC.
    - Carga inicial de reportes: `docker --context supervision-google compose -f nube/compose.google.yml --env-file nube/.env --profile carga run --rm ia-carga-inicial`.
    - Prueba completa: `node pruebas/humo-despliegue.mjs --entorno nube/.env --completa`.
@@ -83,7 +83,10 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
   - `CLIENTE1_CORREO`.
   - Obras usa S3 real con `obras-s3`.
 - AWS: sin DynamoDB Local ni MinIO. Sincronización usa el rol de la máquina (IMDSv2, sin claves) y no crea tablas.
-- Google: `MONGO_IMAGEN` (`mongo:7.0` si el *kernel* es 6.19 o más) y `IA_LLM_PROVEEDOR=anthropic` por defecto.
+- Google:
+  - `MONGO_IMAGEN` (`mongo:7.0` si el *kernel* es 6.19 o más) e `IA_LLM_PROVEEDOR=anthropic` por defecto.
+  - Red propia `vpc-supervision` (la `default` de un proyecto nuevo deja el 22 y el 3389 abiertos a internet) con dos reglas: `supervision-web` (80 y 443) y `supervision-ssh` (22 solo desde tu IP).
+  - La máquina va sin cuenta de servicio: Materiales e IA no llaman a APIs de Google.
 
 ## Costos (precios de lista consultados el 08/11/2026)
 
@@ -94,11 +97,11 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
 | IP fija (una por nube) | $0,005/h (~$3,60 al mes) | siempre |
 | Discos (32 GiB en Azure, 16 GiB en AWS) | unos pocos dólares al mes | siempre |
 
-Con `NUBE_ALERTAS_CORREO` (opcional) se crea un presupuesto con avisos al 50, 80 y 100 % en cada nube. La cuenta de prueba de Azure tiene además el límite de gasto: al acabarse el crédito apaga los recursos en lugar de cobrar.
+Con `NUBE_ALERTAS_CORREO` (opcional) se crea un presupuesto con avisos al 50, 80 y 100 % en cada nube. La cuenta de prueba de Azure tiene además el límite de gasto: al acabarse el crédito apaga los recursos en lugar de cobrar. En Google el presupuesto se crea en la consola (Facturación → Presupuestos y alertas); la prueba gratuita no cobra a la tarjeta mientras no se active la cuenta completa.
 
 ## Problemas comunes
 
 - **`desplegar azure` se queda esperando el certificado de RabbitMQ:** el DNS todavía no apunta a la máquina o no se propagó. Revisa con `nslookup rabbitmq.supervision.workflow-tramites.site` y con `node nube/nube.mjs registros azure caddy`.
-- **SSH rechazado:** cambió tu IP. `encender` y `desplegar` vuelven a abrir el 22 a la IP actual.
+- **SSH rechazado:** cambió tu IP. `encender` y `desplegar` vuelven a abrir el 22 a la IP actual (en las tres nubes).
 - **La B2als_v2 se queda sin memoria:** en `nube/.env`, `AZURE_TAMANO=Standard_B2as_v2` (8 GiB); en el portal, desasignar, cambiar el tamaño y encender.
 - **Una máquina recreada con la misma IP:** `crear` olvida la huella SSH vieja (`ssh-keygen -R`).

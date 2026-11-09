@@ -141,12 +141,13 @@ comprobar_entorno() {
   if [ -n "$BUCKET" ] && [ "$DEMO" != si ] && [[ "$BUCKET" != supervision-dev-* ]]; then
     detener "El bucket '$BUCKET' no es de desarrollo: S3_BUCKET debe empezar con supervision-dev- (o SEMILLA_DEMO=si). No se toca."
   fi
-  if [ -n "$BUCKET" ] && [ -n "$(env_valor AWS_ACCESS_KEY_ID)" ] && [ -n "$(env_valor AWS_SECRET_ACCESS_KEY)" ]; then
+  # 602: en la nube la clave es la del usuario obras-s3 (OBRAS_S3_*; compose.aws.yml la pasa a s3-cli)
+  if [ -n "$BUCKET" ] && [ -n "$(env_valor AWS_ACCESS_KEY_ID)$(env_valor OBRAS_S3_ACCESS_KEY)" ] \n    && [ -n "$(env_valor AWS_SECRET_ACCESS_KEY)$(env_valor OBRAS_S3_SECRET_KEY)" ]; then
     FOTOS=si
     echo "ok       bucket s3://$BUCKET"
   else
     FOTOS=no
-    aviso "Se saltan las fotos: faltan S3_BUCKET, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY en $RUTA_ENV. Las filas de las fotos se cargan igual en Obras, pero las imágenes no se verán hasta subirlas (completa .env y vuelve a correr semilla: no duplica nada)."
+    aviso "Se saltan las fotos: faltan S3_BUCKET, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY (en la nube, OBRAS_S3_*) en $RUTA_ENV. Las filas de las fotos se cargan igual en Obras, pero las imágenes no se verán hasta subirlas (completa .env y vuelve a correr semilla: no duplica nada)."
   fi
 
   paso 'Herramientas y proyectos'

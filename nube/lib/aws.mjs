@@ -1,14 +1,13 @@
 // 602 · AWS: crea los datos (bucket S3, tablas de DynamoDB, usuario obras-s3, rol de la máquina y presupuesto) y la
 // máquina vm-sincronizacion (t3.micro con Elastic IP); la enciende, la apaga y dice su estado. Usa la CLI de AWS con
 // el perfil por defecto (usuario IAM jairo-cli) y la región AWS_REGION. Diseño de la 602, «Qué crea cada nube».
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  NUBE,
-  USUARIO,
   asegurarClave,
   aviso,
+  cloudInitConUsuario,
   detener,
   ejecutar,
   esperar,
@@ -215,21 +214,6 @@ export async function abrirSshAws(env = leerEnv()) {
     aws(env, ['ec2', 'authorize-security-group-ingress', '--group-id', grupo.GroupId, '--protocol', 'tcp', '--port', '22', '--cidr', `${ip}/32`]);
   }
   ok(`SSH de AWS abierto solo para ${ip}`);
-}
-
-/** cloud-init con el usuario supervision y la clave SSH (en AWS el usuario por defecto es ubuntu). */
-export function cloudInitConUsuario(clavePublica) {
-  const usuario = [
-    'users:',
-    '  - default',
-    `  - name: ${USUARIO}`,
-    '    groups: [sudo]',
-    '    sudo: "ALL=(ALL) NOPASSWD:ALL"',
-    '    shell: /bin/bash',
-    '    ssh_authorized_keys:',
-    `      - ${clavePublica}`,
-  ].join('\n');
-  return readFileSync(join(NUBE, 'maquina', 'cloud-init.yaml'), 'utf8').replace(/^# __USUARIO__.*$/m, usuario);
 }
 
 export async function crearMaquinaAws() {

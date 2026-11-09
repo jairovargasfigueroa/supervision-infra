@@ -76,10 +76,11 @@ export function fijarEnv(cambios, ruta = RUTA_ENV) {
 // --- Comandos externos -----------------------------------------------------------------------------------------------
 
 /**
- * En Windows, `az` es un .cmd y Node no lo ejecuta sin shell (y con shell habría que escapar comillas y JSON):
- * se llama directo al Python de la CLI de Azure, como hace az.cmd.
+ * En Windows, `az` y `gcloud` son .cmd y Node no los ejecuta sin shell (y con shell habría que escapar comillas y
+ * JSON): se llama directo al Python que traen, como hacen az.cmd y gcloud.cmd.
  */
 function resolverComando(programa, argumentos) {
+  if (process.platform === 'win32' && programa === 'gcloud') return resolverGcloud(argumentos);
   if (process.platform !== 'win32' || programa !== 'az') return [programa, argumentos];
   const candidatos = [
     process.env.AZ_CLI_DIR,
@@ -89,6 +90,20 @@ function resolverComando(programa, argumentos) {
   const carpeta = candidatos.find((c) => existsSync(join(c, 'python.exe')));
   if (!carpeta) detener('No encuentro la CLI de Azure: winget install -e --id Microsoft.AzureCLI');
   return [join(carpeta, 'python.exe'), ['-IBm', 'azure.cli', ...argumentos]];
+}
+
+/** gcloud.cmd: el Python incluido en la CLI de Google con -S y lib/gcloud.py. Sin la CLI, «gcloud» (falla al ejecutar). */
+function resolverGcloud(argumentos) {
+  const raiz = [
+    process.env.CLOUDSDK_ROOT_DIR,
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Google', 'Cloud SDK', 'google-cloud-sdk'),
+    'C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk',
+    'C:\\Program Files\\Google\\Cloud SDK\\google-cloud-sdk',
+  ]
+    .filter(Boolean)
+    .find((c) => existsSync(join(c, 'lib', 'gcloud.py')) && existsSync(join(c, 'platform', 'bundledpython', 'python.exe')));
+  if (!raiz) return ['gcloud', argumentos];
+  return [join(raiz, 'platform', 'bundledpython', 'python.exe'), ['-S', join(raiz, 'lib', 'gcloud.py'), ...argumentos]];
 }
 
 /**
@@ -146,6 +161,21 @@ export function asegurarClave(env = leerEnv()) {
     ok(`clave SSH creada en ${privada}`);
   }
   return readFileSync(`${privada}.pub`, 'utf8').trim();
+}
+
+/** cloud-init con el usuario supervision y la clave SSH (AWS y Google; en Azure lo crea az vm create). */
+export function cloudInitConUsuario(clavePublica) {
+  const usuario = [
+    'users:',
+    '  - default',
+    `  - name: ${USUARIO}`,
+    '    groups: [sudo]',
+    '    sudo: "ALL=(ALL) NOPASSWD:ALL"',
+    '    shell: /bin/bash',
+    '    ssh_authorized_keys:',
+    `      - ${clavePublica}`,
+  ].join('\n');
+  return readFileSync(join(NUBE, 'maquina', 'cloud-init.yaml'), 'utf8').replace(/^# __USUARIO__.*$/m, usuario);
 }
 
 const MARCA_INICIO = '# >>> supervision-nube (lo escribe infra/nube/nube.mjs; no lo edites a mano) >>>';
