@@ -10,16 +10,16 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 
 | Nube | Máquina | Qué corre | Nombres |
 |---|---|---|---|
-| Azure (`northcentralus`, Chicago: la suscripción de prueba no permite máquinas pequeñas en São Paulo ni en Virginia) | `vm-plataforma`, B2als_v2 (4 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
-| AWS (`us-east-2`, la única región que permite la organización de la cuenta) | `vm-sincronizacion`, t3.micro (1 GiB) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
-| Google (`us-east5`, Columbus) | `vm-ia`, e2-medium (4 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
+| Azure (`northcentralus`, Chicago: la suscripción de prueba no permite máquinas pequeñas en São Paulo ni en Virginia) | `vm-plataforma`, D4as_v5 (4 vCPU, 16 GiB) | `compose.azure.yml`: Caddy y los 5 frontends, Keycloak, gateway, Obras, Finanzas (API y trabajos), RabbitMQ (AMQPS 5671), n8n, Mailpit y PostgreSQL | `keycloak`, `gateway`, `obras`, `finanzas`, `erp`, `portal`, `mf-obras`, `mf-materiales`, `mf-supervision`, `n8n`, `mailpit`, `rabbitmq` |
+| AWS (`us-east-2`, la única región que permite la organización de la cuenta) | `vm-sincronizacion`, m7i-flex.large (2 vCPU, 8 GiB; el plan gratuito de AWS solo permite algunos tamaños) | `compose.aws.yml`: Caddy y Sincronización; además DynamoDB y el bucket S3 | `sincronizacion` |
+| Google (`us-east5`, Columbus) | `vm-ia`, e2-standard-4 (4 vCPU, 16 GB) | `compose.google.yml`: Caddy, Materiales, IA, MongoDB y PostgreSQL de reportes | `materiales`, `ia` |
 
 ## Lo que hace falta en la PC
 
 - Node 24, Docker Desktop (para generar los hashes y para la semilla) y OpenSSH (viene con Windows 11).
 - CLI de Azure con sesión: `az login` (la cuenta de los créditos).
 - CLI de AWS con el usuario IAM `jairo-cli`: `aws configure`. Los *scripts* usan `AWS_REGION` de `nube/.env` (`us-east-2`: la organización de la cuenta bloquea las demás regiones).
-- CLI de Google (`gcloud`), cuando esté la cuenta.
+- CLI de Google con sesión: `winget install -e --id Google.CloudSDK` y `gcloud auth login` (la cuenta de los créditos). Los *scripts* pasan `--project` con `GOOGLE_PROYECTO` en cada llamada: no cambian el proyecto por defecto de `gcloud`.
 
 ## Primera vez (en este orden)
 
@@ -29,9 +29,9 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 4. **Azure:** `node nube/nube.mjs crear azure`. Después pon los registros DNS (paso «DNS en Namecheap») y `node nube/nube.mjs desplegar azure`, que compila y copia los frontends, espera el certificado de RabbitMQ y levanta todo.
 5. **AWS, máquina:** `node nube/nube.mjs crear aws`, el registro DNS de `sincronizacion` y `node nube/nube.mjs desplegar aws`.
 6. **Prueba de humo sin Google:** `node pruebas/humo-despliegue.mjs --entorno nube/.env --sin-google`.
-7. **Google** (cuando esté la cuenta): `crear google`, sus dos registros DNS y `desplegar google`. Después:
+7. **Google:** `node nube/nube.mjs crear google`. Crea el proyecto `supervision-obras` (si ese ID ya lo usa otra cuenta, con un sufijo que guarda en `nube/.env`), lo une a la cuenta de facturación de los créditos (si hay varias, la de `GOOGLE_FACTURACION`), activa Compute Engine y crea la red `vpc-supervision` con su *firewall*, la IP fija y `vm-ia`; al final fija `MONGO_IMAGEN` según el *kernel*. Después sus dos registros DNS y `desplegar google`. Luego:
    - Datos de demostración: `node nube/nube.mjs contextos` y `./semilla/semilla.ps1 -Entorno nube/.env`. La carga de cada servicio corre en su máquina por SSH; las fotos suben a S3 desde la PC.
-   - Carga inicial de reportes: `docker --context supervision-google compose -f nube/compose.google.yml --env-file nube/.env --profile carga run --rm ia-carga-inicial`.
+   - Carga inicial de reportes, en la máquina de Google (por el contexto de Docker, Compose tomaría las rutas de la PC para los volúmenes de PostgreSQL): `ssh supervision-google "docker compose -f /opt/supervision/nube/compose.google.yml --profile carga run --rm ia-carga-inicial"`.
    - Prueba completa: `node pruebas/humo-despliegue.mjs --entorno nube/.env --completa`.
    - El APK que apunta a la nube: `scripts/apk-nube.ps1` de app-obra.
 8. **Al terminar:** `node nube/nube.mjs apagar todas`.
@@ -63,7 +63,7 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
   1. Crea una cuenta nueva solo para esto.
   2. Activa la verificación en dos pasos (Cuenta de Google → Seguridad).
   3. Crea una contraseña de aplicación (Seguridad → Contraseñas de aplicaciones).
-  4. En `nube/.env` van `SMTP_USUARIO` (el Gmail), `SMTP_CLAVE` (las 16 letras, sin espacios), `COBRANZA_REMITENTE` y `COBRANZA_CORREO` (el mismo Gmail).
+  4. En `nube/.env` van `SMTP_HOST=smtp.gmail.com`, `SMTP_PUERTO=587`, `SMTP_SEGURO=false`, `SMTP_USUARIO` (el Gmail), `SMTP_CLAVE` (las 16 letras, sin espacios), `COBRANZA_REMITENTE` y `COBRANZA_CORREO` (el mismo Gmail). Con `SMTP_HOST` vacío, el correo queda en Mailpit.
   5. `CLIENTE1_CORREO` es un buzón tuyo, donde llega la nota de cobro de `cliente1`.
 
   Keycloak toma `CLIENTE1_CORREO` solo la primera vez que importa el realm; después se cambia en su consola.
@@ -83,22 +83,26 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
   - `CLIENTE1_CORREO`.
   - Obras usa S3 real con `obras-s3`.
 - AWS: sin DynamoDB Local ni MinIO. Sincronización usa el rol de la máquina (IMDSv2, sin claves) y no crea tablas.
-- Google: `MONGO_IMAGEN` (`mongo:7.0` si el *kernel* es 6.19 o más) y `IA_LLM_PROVEEDOR=anthropic` por defecto.
+- Google:
+  - `MONGO_IMAGEN` (`mongo:7.0` si el *kernel* es 6.19 o más) e `IA_LLM_PROVEEDOR=anthropic` por defecto.
+  - Red propia `vpc-supervision` (la `default` de un proyecto nuevo deja el 22 y el 3389 abiertos a internet) con dos reglas: `supervision-web` (80 y 443) y `supervision-ssh` (22 solo desde tu IP).
+  - La máquina va sin cuenta de servicio: Materiales e IA no llaman a APIs de Google.
 
 ## Costos (precios de lista consultados el 08/11/2026)
 
 | Recurso | Precio | Se paga |
 |---|---|---|
-| Azure B2als_v2 en `northcentralus` | $0,0468/h | encendida |
-| AWS t3.micro en `us-east-2` | $0,0104/h | encendida |
+| Azure D4as_v5 en `northcentralus` | ~$0,17/h | encendida |
+| AWS m7i-flex.large en `us-east-2` | ~$0,10/h (créditos del plan gratuito) | encendida |
+| Google e2-standard-4 en `us-east5` | ~$0,13/h (créditos de la prueba) | encendida |
 | IP fija (una por nube) | $0,005/h (~$3,60 al mes) | siempre |
 | Discos (32 GiB en Azure, 16 GiB en AWS) | unos pocos dólares al mes | siempre |
 
-Con `NUBE_ALERTAS_CORREO` (opcional) se crea un presupuesto con avisos al 50, 80 y 100 % en cada nube. La cuenta de prueba de Azure tiene además el límite de gasto: al acabarse el crédito apaga los recursos en lugar de cobrar.
+Con `NUBE_ALERTAS_CORREO` (opcional) se crea un presupuesto con avisos al 50, 80 y 100 % en cada nube. La cuenta de prueba de Azure tiene además el límite de gasto: al acabarse el crédito apaga los recursos en lugar de cobrar. En Google el presupuesto se crea en la consola (Facturación → Presupuestos y alertas); la prueba gratuita no cobra a la tarjeta mientras no se active la cuenta completa.
 
 ## Problemas comunes
 
 - **`desplegar azure` se queda esperando el certificado de RabbitMQ:** el DNS todavía no apunta a la máquina o no se propagó. Revisa con `nslookup rabbitmq.supervision.workflow-tramites.site` y con `node nube/nube.mjs registros azure caddy`.
-- **SSH rechazado:** cambió tu IP. `encender` y `desplegar` vuelven a abrir el 22 a la IP actual.
-- **La B2als_v2 se queda sin memoria:** en `nube/.env`, `AZURE_TAMANO=Standard_B2as_v2` (8 GiB); en el portal, desasignar, cambiar el tamaño y encender.
+- **SSH rechazado:** cambió tu IP. `encender` y `desplegar` vuelven a abrir el 22 a la IP actual (en las tres nubes).
+- **Cambiar el tamaño de una máquina:** con la máquina apagada, `az vm resize -g rg-supervision -n vm-plataforma --size <tamaño>`, `gcloud compute instances set-machine-type vm-ia --zone us-east5-a --machine-type <tipo> --project <GOOGLE_PROYECTO>` o `aws ec2 modify-instance-attribute --instance-id <id> --instance-type Value=<tipo>`, y el mismo valor en `AZURE_TAMANO`, `GOOGLE_TIPO` o `AWS_TIPO` de `nube/.env`. Azure deja hasta 4 vCPU por región en la suscripción de prueba y el plan gratuito de AWS solo ciertos tipos (`aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`).
 - **Una máquina recreada con la misma IP:** `crear` olvida la huella SSH vieja (`ssh-keygen -R`).

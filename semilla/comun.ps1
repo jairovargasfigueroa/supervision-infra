@@ -113,11 +113,13 @@ function Comprobar-Entorno([switch]$ConRabbitMQ, [string]$Entorno) {
     if ($bucket -and -not $Demo -and -not $bucket.StartsWith('supervision-dev-')) {
         Detener "El bucket '$bucket' no es de desarrollo: S3_BUCKET debe empezar con supervision-dev- (o SEMILLA_DEMO=si). No se toca."
     }
-    $fotos = [bool]($bucket -and $envInfra['AWS_ACCESS_KEY_ID'] -and $envInfra['AWS_SECRET_ACCESS_KEY'])
+    # 602: en la nube la clave es la del usuario obras-s3 (OBRAS_S3_*; compose.aws.yml la pasa a s3-cli)
+    $fotos = [bool]($bucket -and ($envInfra['AWS_ACCESS_KEY_ID'] -or $envInfra['OBRAS_S3_ACCESS_KEY']) -and
+        ($envInfra['AWS_SECRET_ACCESS_KEY'] -or $envInfra['OBRAS_S3_SECRET_KEY']))
     if ($fotos) {
         Write-Host "ok       bucket s3://$bucket"
     } else {
-        Aviso ("Se saltan las fotos: faltan S3_BUCKET, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY en $RutaEnv. " +
+        Aviso ("Se saltan las fotos: faltan S3_BUCKET, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY (en la nube, OBRAS_S3_*) en $RutaEnv. " +
             'Las filas de las fotos se cargan igual en Obras, pero las imágenes no se verán hasta subirlas ' +
             '(completa .env y vuelve a correr semilla: no duplica nada).')
     }
