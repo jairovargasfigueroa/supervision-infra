@@ -46,6 +46,7 @@ docker compose config -q          # valida el docker-compose.yml
 node pruebas/humo-despliegue.mjs --entorno produccion-local/.env [--completa]   # 601: prueba de humo del despliegue
 node nube/nube.mjs secretos | crear <nube> | desplegar <nube> | encender todas | apagar todas | estado   # 602 (nube/README.md)
 node pruebas/humo-despliegue.mjs --entorno nube/.env [--sin-google | --completa]   # 602: prueba de humo en la nube
+node pruebas/banco-ia.mjs --entorno nube/.env [--muestra] [--agentes]   # 505: banco de preguntas y agentes (gasta saldo del modelo)
 ```
 
 En Linux y macOS, los mismos scripts con `.sh` (`--perfil bases`).
@@ -88,6 +89,7 @@ semilla/
 produccion-local/         601: ensayo con imágenes de producción en tres grupos (compose.azure|google|aws.yml, caddy/,
                           certificados, publicar-frontends, levantar y bajar; README «Producción local»)
 pruebas/humo-despliegue.mjs  601: prueba de humo de un despliegue (producción local o nube) con --entorno, --completa y --sin-google
+pruebas/banco-ia.mjs     505: banco de preguntas del asistente de reportes y ejecución de los agentes contra un despliegue
 nube/                     602: compose.azure|google|aws.yml, caddy/, rabbitmq/tls.conf, maquina/ (cloud-init y certificado de
                           RabbitMQ), nube.mjs y lib/; .env y sitios/ fuera del repo (nube/README.md)
 .github/workflows/ci.yml  601: valida los compose, el realm, las definiciones y los flujos en cada pull request
