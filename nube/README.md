@@ -31,7 +31,7 @@ Diseño completo (por qué, comunicación, secretos y costos): `docs/specs/602-d
 6. **Prueba de humo sin Google:** `node pruebas/humo-despliegue.mjs --entorno nube/.env --sin-google`.
 7. **Google:** `node nube/nube.mjs crear google`. Crea el proyecto `supervision-obras` (si ese ID ya lo usa otra cuenta, con un sufijo que guarda en `nube/.env`), lo une a la cuenta de facturación de los créditos (si hay varias, la de `GOOGLE_FACTURACION`), activa Compute Engine y crea la red `vpc-supervision` con su *firewall*, la IP fija y `vm-ia`; al final fija `MONGO_IMAGEN` según el *kernel*. Después sus dos registros DNS y `desplegar google`. Luego:
    - Datos de demostración: `node nube/nube.mjs contextos` y `./semilla/semilla.ps1 -Entorno nube/.env`. La carga de cada servicio corre en su máquina por SSH; las fotos suben a S3 desde la PC.
-   - Carga inicial de reportes: `docker --context supervision-google compose -f nube/compose.google.yml --env-file nube/.env --profile carga run --rm ia-carga-inicial`.
+   - Carga inicial de reportes, en la máquina de Google (por el contexto de Docker, Compose tomaría las rutas de la PC para los volúmenes de PostgreSQL): `ssh supervision-google "docker compose -f /opt/supervision/nube/compose.google.yml --profile carga run --rm ia-carga-inicial"`.
    - Prueba completa: `node pruebas/humo-despliegue.mjs --entorno nube/.env --completa`.
    - El APK que apunta a la nube: `scripts/apk-nube.ps1` de app-obra.
 8. **Al terminar:** `node nube/nube.mjs apagar todas`.
@@ -63,7 +63,7 @@ Para una nube sola, en lugar de `todas`: `azure`, `aws` o `google`. Otras accion
   1. Crea una cuenta nueva solo para esto.
   2. Activa la verificación en dos pasos (Cuenta de Google → Seguridad).
   3. Crea una contraseña de aplicación (Seguridad → Contraseñas de aplicaciones).
-  4. En `nube/.env` van `SMTP_USUARIO` (el Gmail), `SMTP_CLAVE` (las 16 letras, sin espacios), `COBRANZA_REMITENTE` y `COBRANZA_CORREO` (el mismo Gmail).
+  4. En `nube/.env` van `SMTP_HOST=smtp.gmail.com`, `SMTP_PUERTO=587`, `SMTP_SEGURO=false`, `SMTP_USUARIO` (el Gmail), `SMTP_CLAVE` (las 16 letras, sin espacios), `COBRANZA_REMITENTE` y `COBRANZA_CORREO` (el mismo Gmail). Con `SMTP_HOST` vacío, el correo queda en Mailpit.
   5. `CLIENTE1_CORREO` es un buzón tuyo, donde llega la nota de cobro de `cliente1`.
 
   Keycloak toma `CLIENTE1_CORREO` solo la primera vez que importa el realm; después se cambia en su consola.
