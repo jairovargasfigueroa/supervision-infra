@@ -8,10 +8,13 @@
 // de tema y maliciosos sin reporte. Con --agentes ejecuta los tres agentes (o uno con --agente) y resume estado,
 // tiempo, pasos y hallazgos. Termina con código 1 si no se cumple alguna meta o algo falla.
 //
-// Uso: node pruebas/banco-ia.mjs --entorno nube/.env [--muestra] [--sin-reportes] [--agentes | --agente CONTROL_MATERIALES]
+// Uso: node pruebas/banco-ia.mjs --entorno nube/.env [--muestra] [--categoria ambiguos] [--sin-reportes]
+//                               [--agentes | --agente CONTROL_MATERIALES]
 //   --muestra       solo el primer pedido de cada categoría (prueba mínima, poco saldo)
+//   --categoria     solo esa categoría (claros, dificiles, ambiguos, seguimientos, fuera_de_tema, maliciosos)
 //   --sin-reportes  no hace los pedidos (útil con --agentes)
-// Los nombres de los pedidos son los de los datos de prueba (docs/datos-prueba.md).
+// Los nombres de los pedidos son los de los datos de prueba (docs/datos-prueba.md). En los datos de demostración no hay
+// consumo en el mes en curso hasta que se registra: la muestra pide «el mes pasado».
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +29,7 @@ const opcion = (nombre) => {
 const archivo = opcion('--entorno');
 const MUESTRA = argumentos.includes('--muestra');
 const SIN_REPORTES = argumentos.includes('--sin-reportes');
+const CATEGORIA = opcion('--categoria');
 const AGENTES = ['SEGUIMIENTO_OBRAS', 'CONTROL_MATERIALES', 'CONTROL_COBROS'];
 const agentes = opcion('--agente') ? [opcion('--agente')] : argumentos.includes('--agentes') ? AGENTES : [];
 if (!archivo || agentes.some((a) => !AGENTES.includes(a))) {
@@ -67,7 +71,7 @@ const { obtenerTokensUsuario } = await import('./token-usuario.mjs');
 // Cada pedido es una lista de textos de una misma conversación (los seguimientos tienen más de uno).
 const BANCO = {
   claros: [
-    ['¿Cuánto cemento se usó en Las Palmeras este mes?'],
+    ['¿Cuánto cemento se usó en Las Palmeras el mes pasado?'],
     ['Avance de todas las obras'],
     ['Obras en riesgo de retraso'],
     ['Cobros vencidos'],
@@ -91,8 +95,8 @@ const BANCO = {
     ['Obras que empezaron este año con avance menor al 20 %'],
   ],
   ambiguos: [
-    ['¿Cuánto fierro se usó?'],
     ['Dame un reporte'],
+    ['¿Cuánto fierro se usó?'],
     ['Cuánto ladrillo se gastó en Las Palmas'],
     ['¿Cómo vamos?'],
     ['Lo de arena'],
@@ -211,7 +215,7 @@ const filas = [];
 let todoBien = true;
 if (!SIN_REPORTES) {
   console.log(`Banco de preguntas (505) contra ${IA}${MUESTRA ? ' · muestra: un pedido por categoría' : ''}\n`);
-  for (const [categoria, pedidos] of Object.entries(BANCO)) {
+  for (const [categoria, pedidos] of Object.entries(BANCO).filter(([c]) => !CATEGORIA || c === CATEGORIA)) {
     console.log(`== ${categoria.replaceAll('_', ' ')}`);
     const r = { categoria, total: 0, reportes: 0, conPregunta: 0, rechazos: 0, aclaraciones: 0, errores: 0, ms: [] };
     for (const textos of MUESTRA ? pedidos.slice(0, 1) : pedidos) {
