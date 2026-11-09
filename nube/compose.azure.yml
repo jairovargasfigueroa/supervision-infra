@@ -336,7 +336,6 @@ services:
       - "443:443"
     environment:
       DOMINIO: ${DOMINIO:?falta DOMINIO en .env}
-      ACME_CORREO: ${ACME_CORREO:?falta ACME_CORREO en .env}
       ERP_URL: ${ERP_URL}
       MAILPIT_USUARIO: ${MAILPIT_USUARIO:?falta MAILPIT_USUARIO en .env}
       MAILPIT_CLAVE_HASH: ${MAILPIT_CLAVE_HASH:?falta MAILPIT_CLAVE_HASH en .env}

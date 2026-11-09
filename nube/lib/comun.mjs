@@ -76,10 +76,11 @@ export function fijarEnv(cambios, ruta = RUTA_ENV) {
 // --- Comandos externos -----------------------------------------------------------------------------------------------
 
 /**
- * En Windows, `az` es un .cmd y Node no lo ejecuta sin shell (y con shell habría que escapar comillas y JSON):
- * se llama directo al Python de la CLI de Azure, como hace az.cmd.
+ * En Windows, `az` y `gcloud` son .cmd y Node no los ejecuta sin shell (y con shell habría que escapar comillas y
+ * JSON): se llama directo al Python que traen, como hacen az.cmd y gcloud.cmd.
  */
 function resolverComando(programa, argumentos) {
+  if (process.platform === 'win32' && programa === 'gcloud') return resolverGcloud(argumentos);
   if (process.platform !== 'win32' || programa !== 'az') return [programa, argumentos];
   const candidatos = [
     process.env.AZ_CLI_DIR,
@@ -89,6 +90,20 @@ function resolverComando(programa, argumentos) {
   const carpeta = candidatos.find((c) => existsSync(join(c, 'python.exe')));
   if (!carpeta) detener('No encuentro la CLI de Azure: winget install -e --id Microsoft.AzureCLI');
   return [join(carpeta, 'python.exe'), ['-IBm', 'azure.cli', ...argumentos]];
+}
+
+/** gcloud.cmd: el Python incluido en la CLI de Google con -S y lib/gcloud.py. Sin la CLI, «gcloud» (falla al ejecutar). */
+function resolverGcloud(argumentos) {
+  const raiz = [
+    process.env.CLOUDSDK_ROOT_DIR,
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Google', 'Cloud SDK', 'google-cloud-sdk'),
+    'C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk',
+    'C:\\Program Files\\Google\\Cloud SDK\\google-cloud-sdk',
+  ]
+    .filter(Boolean)
+    .find((c) => existsSync(join(c, 'lib', 'gcloud.py')) && existsSync(join(c, 'platform', 'bundledpython', 'python.exe')));
+  if (!raiz) return ['gcloud', argumentos];
+  return [join(raiz, 'platform', 'bundledpython', 'python.exe'), ['-S', join(raiz, 'lib', 'gcloud.py'), ...argumentos]];
 }
 
 /**
@@ -148,6 +163,21 @@ export function asegurarClave(env = leerEnv()) {
   return readFileSync(`${privada}.pub`, 'utf8').trim();
 }
 
+/** cloud-init con el usuario supervision y la clave SSH (AWS y Google; en Azure lo crea az vm create). */
+export function cloudInitConUsuario(clavePublica) {
+  const usuario = [
+    'users:',
+    '  - default',
+    `  - name: ${USUARIO}`,
+    '    groups: [sudo]',
+    '    sudo: "ALL=(ALL) NOPASSWD:ALL"',
+    '    shell: /bin/bash',
+    '    ssh_authorized_keys:',
+    `      - ${clavePublica}`,
+  ].join('\n');
+  return readFileSync(join(NUBE, 'maquina', 'cloud-init.yaml'), 'utf8').replace(/^# __USUARIO__.*$/m, usuario);
+}
+
 const MARCA_INICIO = '# >>> supervision-nube (lo escribe infra/nube/nube.mjs; no lo edites a mano) >>>';
 const MARCA_FIN = '# <<< supervision-nube <<<';
 
@@ -192,9 +222,21 @@ export function olvidarHuella(ip) {
   ejecutar('ssh-keygen', ['-R', ip], { permitirFallo: true });
 }
 
-/** Ejecuta un comando en la máquina por SSH (con el nombre de ~/.ssh/config). */
+/**
+ * Ejecuta un comando en la máquina por SSH (con el nombre de ~/.ssh/config). Si falla y el que llama no lo permite,
+ * lo reintenta dos veces más (un corte pasajero de SSH, visto en la t3.micro al levantar los contenedores); los
+ * comandos que se mandan son idempotentes (copiar, pull, up -d, esperar).
+ */
 export function remoto(nube, comando, opciones = {}) {
-  return ejecutar('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', `supervision-${nube}`, comando], opciones);
+  const argumentos = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', `supervision-${nube}`, comando];
+  if (opciones.permitirFallo) return ejecutar('ssh', argumentos, opciones);
+  for (let intento = 1; intento < 3; intento++) {
+    const salida = ejecutar('ssh', argumentos, { ...opciones, permitirFallo: true });
+    if (salida !== null) return salida;
+    console.log(`aviso    falló un comando por SSH en ${nube} (intento ${intento}); se reintenta en 10 s`);
+    spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 10000)']);
+  }
+  return ejecutar('ssh', argumentos, opciones);
 }
 
 /** Espera a que la máquina acepte SSH y termine cloud-init (Docker instalado). */

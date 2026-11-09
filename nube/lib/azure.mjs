@@ -10,6 +10,7 @@ import {
   aviso,
   detener,
   ejecutar,
+  esperar,
   leerEnv,
   miIp,
   ok,
@@ -26,7 +27,8 @@ const PRESUPUESTO = 'presupuesto-supervision';
 
 const az = (argumentos, opciones = {}) => ejecutar('az', [...argumentos, '--only-show-errors'], opciones);
 const grupo = (env) => variable('AZURE_GRUPO', env) || 'rg-supervision';
-const region = (env) => variable('AZURE_REGION', env) || 'brazilsouth';
+// La suscripción de prueba no permite máquinas pequeñas en brazilsouth ni en eastus (602, decisión 8)
+const region = (env) => variable('AZURE_REGION', env) || 'northcentralus';
 
 function sesion() {
   const cuenta = az(['account', 'show', '-o', 'json'], { json: true, permitirFallo: true });
@@ -74,7 +76,7 @@ export async function crearAzure() {
   }
 
   paso(`Cuota de la familia B en ${r}`);
-  const tamano = variable('AZURE_TAMANO', env) || 'Standard_B2s';
+  const tamano = variable('AZURE_TAMANO', env) || 'Standard_D4as_v5';
   const usos = az(['vm', 'list-usage', '-l', r, '-o', 'json'], { json: true });
   for (const nombre of ['cores', 'standardBSFamily']) {
     const uso = usos.find((u) => u.name.value === nombre);
@@ -97,11 +99,13 @@ export async function crearAzure() {
     ['ssh', '120', ['22'], `${ipPc}/32`],
   ];
   for (const [nombre, prioridad, puertos, origen] of reglas) {
-    az([
+    const argumentos = [
       'network', 'nsg', 'rule', 'create', '-g', g, '--nsg-name', NSG, '-n', nombre, '--priority', prioridad,
       '--direction', 'Inbound', '--access', 'Allow', '--protocol', 'Tcp', '--source-address-prefixes', origen,
       '--destination-port-ranges', ...puertos, '-o', 'none',
-    ]);
+    ];
+    // Recién creado, el NSG puede tardar unos segundos en verse (ResourceNotFound): se reintenta
+    for (let intento = 1; az(argumentos, { permitirFallo: intento < 5 }) === null; intento++) await esperar(10_000);
   }
   ok(`${NSG}: 80, 443 y 5671 desde internet; 22 solo desde ${ipPc}`);
   if (az(['network', 'vnet', 'show', '-g', g, '-n', RED, '--query', 'name', '-o', 'tsv'], { permitirFallo: true }) === null) {

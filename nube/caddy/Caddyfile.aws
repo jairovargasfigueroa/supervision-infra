@@ -1,9 +1,5 @@
 # 602 · Caddy de la nube de AWS (vm-sincronizacion): HTTPS en 443 (80 redirige) con Let's Encrypt. Publica
 # Sincronización. Las fotos van directo a Amazon S3 con URL firmadas (no pasan por aquí).
-{
-	email {$ACME_CORREO}
-}
-
 import /etc/caddy/comun.caddy
 
 sincronizacion.{$DOMINIO} {

@@ -1,14 +1,13 @@
 // 602 · AWS: crea los datos (bucket S3, tablas de DynamoDB, usuario obras-s3, rol de la máquina y presupuesto) y la
-// máquina vm-sincronizacion (t3.micro con Elastic IP); la enciende, la apaga y dice su estado. Usa la CLI de AWS con
+// máquina vm-sincronizacion (m7i-flex.large con Elastic IP); la enciende, la apaga y dice su estado. Usa la CLI de AWS con
 // el perfil por defecto (usuario IAM jairo-cli) y la región AWS_REGION. Diseño de la 602, «Qué crea cada nube».
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  NUBE,
-  USUARIO,
   asegurarClave,
   aviso,
+  cloudInitConUsuario,
   detener,
   ejecutar,
   esperar,
@@ -22,7 +21,7 @@ import {
 } from './comun.mjs';
 
 const VM = 'vm-sincronizacion';
-const GRUPO_SEGURIDAD = 'sg-sincronizacion';
+const GRUPO_SEGURIDAD = 'supervision-sincronizacion'; // AWS no acepta nombres que empiecen con sg-
 const PAR_CLAVES = 'supervision-nube';
 const ROL = 'sincronizacion-ec2';
 const USUARIO_S3 = 'obras-s3';
@@ -217,25 +216,10 @@ export async function abrirSshAws(env = leerEnv()) {
   ok(`SSH de AWS abierto solo para ${ip}`);
 }
 
-/** cloud-init con el usuario supervision y la clave SSH (en AWS el usuario por defecto es ubuntu). */
-export function cloudInitConUsuario(clavePublica) {
-  const usuario = [
-    'users:',
-    '  - default',
-    `  - name: ${USUARIO}`,
-    '    groups: [sudo]',
-    '    sudo: "ALL=(ALL) NOPASSWD:ALL"',
-    '    shell: /bin/bash',
-    '    ssh_authorized_keys:',
-    `      - ${clavePublica}`,
-  ].join('\n');
-  return readFileSync(join(NUBE, 'maquina', 'cloud-init.yaml'), 'utf8').replace(/^# __USUARIO__.*$/m, usuario);
-}
-
 export async function crearMaquinaAws() {
   const env = leerEnv();
   cuenta(env);
-  const tipo = variable('AWS_TIPO', env) || 't3.micro';
+  const tipo = variable('AWS_TIPO', env) || 'm7i-flex.large';
   const clavePublica = asegurarClave(env);
 
   paso('Par de claves y grupo de seguridad');
@@ -269,8 +253,8 @@ export async function crearMaquinaAws() {
       'ec2', 'run-instances', '--image-id', ami, '--instance-type', tipo, '--key-name', PAR_CLAVES,
       '--security-group-ids', grupo.GroupId, '--iam-instance-profile', `Name=${ROL}`,
       '--metadata-options', 'HttpTokens=required,HttpPutResponseHopLimit=2,HttpEndpoint=enabled',
-      // Créditos de CPU «standard»: sin cobros extra si la CPU se queda alta
-      '--credit-specification', 'CpuCredits=standard',
+      // Créditos de CPU «standard» (solo los tipos t*): sin cobros extra si la CPU se queda alta
+      ...(tipo.startsWith('t') ? ['--credit-specification', 'CpuCredits=standard'] : []),
       '--block-device-mappings', 'DeviceName=/dev/sda1,Ebs={VolumeSize=16,VolumeType=gp3,DeleteOnTermination=true}',
       '--user-data', `file://${archivo}`,
       '--tag-specifications', `ResourceType=instance,Tags=[{Key=Name,Value=${VM}}]`,

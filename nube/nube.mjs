@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// 602 · Despliegue en las tres nubes desde la PC de Jairo (Node 24, sin dependencias). Llama a las CLI az, aws (y
-// gcloud cuando esté Google), ssh, scp, tar y docker. Diseño: docs/specs/602-despliegue-tres-nubes/diseno.md;
+// 602 · Despliegue en las tres nubes desde la PC de Jairo (Node 24, sin dependencias). Llama a las CLI az, aws,
+// gcloud, ssh, scp, tar y docker. Diseño: docs/specs/602-despliegue-tres-nubes/diseno.md;
 // pasos y costos: nube/README.md.
 //
 // Uso: node nube/nube.mjs <acción> [nube] [opciones]
@@ -39,14 +39,15 @@ import {
   variable,
 } from './lib/comun.mjs';
 import { abrirSshAzure, apagarAzure, crearAzure, encenderAzure, estadoAzure, ipAzure } from './lib/azure.mjs';
-import { apagarAws, crearDatosAws, crearMaquinaAws, encenderAws, estadoAws, ipAws } from './lib/aws.mjs';
-import { apagarGoogle, crearGoogle, encenderGoogle, estadoGoogle, ipGoogle } from './lib/google.mjs';
+import { abrirSshAws, apagarAws, crearDatosAws, crearMaquinaAws, encenderAws, estadoAws, ipAws } from './lib/aws.mjs';
+import { abrirSshGoogle, apagarGoogle, crearGoogle, encenderGoogle, estadoGoogle, ipGoogle } from './lib/google.mjs';
 import { desplegarEn, esperarSano, mostrarContenedores, registros, revisarSalud, sesionSsh } from './lib/maquina.mjs';
 
 const IP = { azure: ipAzure, aws: ipAws, google: ipGoogle };
 const ESTADO = { azure: estadoAzure, aws: estadoAws, google: estadoGoogle };
 const ENCENDER = { azure: encenderAzure, aws: encenderAws, google: encenderGoogle };
 const APAGAR = { azure: apagarAzure, aws: apagarAws, google: apagarGoogle };
+const ABRIR_SSH = { azure: abrirSshAzure, aws: abrirSshAws, google: abrirSshGoogle };
 const encendida = (estado) => Boolean(estado) && /running/i.test(estado);
 
 // --- secretos --------------------------------------------------------------------------------------------------------
@@ -132,8 +133,7 @@ function secretos() {
 
   env = leerEnv();
   const manuales = [
-    ['ACME_CORREO', 'tu correo, para Let\'s Encrypt'],
-    ['NUBE_ALERTAS_CORREO', 'tu correo, para los avisos de presupuesto'],
+    ['NUBE_ALERTAS_CORREO', 'opcional: tu correo, para los avisos de presupuesto'],
     ['CLIENTE1_CORREO', 'buzón real donde llega la nota de cobro de cliente1 (vacío: cliente1@correo.test)'],
     ['SMTP_USUARIO', 'el Gmail de la plataforma (sin él, el correo queda en Mailpit)'],
     ['SMTP_CLAVE', 'su contraseña de aplicación (16 letras)'],
@@ -224,7 +224,7 @@ async function prepararSsh(nube) {
   const ip = IP[nube](env);
   if (!ip) detener(`La máquina de ${nube} no existe: node nube/nube.mjs crear ${nube}`);
   fijarSshConfig(nube, ip, env);
-  if (nube === 'azure') await abrirSshAzure(env);
+  await ABRIR_SSH[nube](env);
   await esperarSsh(nube);
 }
 

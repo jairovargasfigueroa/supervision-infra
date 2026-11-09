@@ -192,7 +192,6 @@ services:
       - "443:443"
     environment:
       DOMINIO: ${DOMINIO:?falta DOMINIO en .env}
-      ACME_CORREO: ${ACME_CORREO:?falta ACME_CORREO en .env}
       ERP_URL: ${ERP_URL}
     volumes:
       - ./caddy/Caddyfile.google:/etc/caddy/Caddyfile:ro
