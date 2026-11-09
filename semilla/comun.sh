@@ -128,6 +128,11 @@ comprobar_entorno() {
   leer_env
   [ -n "$entorno" ] && echo "ok       entorno $RUTA_ENV"
   # 601: SEMILLA_DEMO=si permite cargar (nunca vaciar) los datos de demostración fuera de desarrollo
+  # 603: SEMILLA_HISTORIA=si suma la historia de demostración (obras 4 a 6) a los datos de prueba
+  if [ "$(env_valor SEMILLA_HISTORIA)" = 'si' ]; then
+    HISTORIA=si
+    echo 'ok       SEMILLA_HISTORIA=si (con la historia de demostración, 603)'
+  fi
   if [ "$(env_valor SEMILLA_DEMO)" = 'si' ]; then
     DEMO=si
     echo 'ok       SEMILLA_DEMO=si (datos de demostración: solo carga, nunca vaciado)'
@@ -232,7 +237,7 @@ ejecutar_en_imagen() {
     esac
   done
   ejecutar "$nombre" "$INFRA" docker "${contexto[@]}" compose -f "$(ruta_docker "$archivo")" --env-file "$(ruta_docker "$RUTA_ENV")" run --rm --no-deps --no-TTY \
-    -e SEMILLA_DEMO=si -e "SEMILLA_FECHA=$SEMILLA_FECHA" "${variables[@]}" "$servicio" "${comando[@]}"
+    -e SEMILLA_DEMO=si -e "SEMILLA_FECHA=$SEMILLA_FECHA" -e "SEMILLA_HISTORIA=$SEMILLA_HISTORIA" "${variables[@]}" "$servicio" "${comando[@]}"
 }
 
 contar_fotos() {
@@ -248,6 +253,8 @@ cargar_datos() {
   paso 'Fecha de carga'
   fecha="$(ayudante fecha)" || exit 1
   export SEMILLA_FECHA="$fecha"
+  # 603: la reciben los tres servicios (en desarrollo, por herencia; en modo demostración, con -e)
+  if [ "${HISTORIA:-}" = si ]; then export SEMILLA_HISTORIA=si; else export SEMILLA_HISTORIA=; fi
   echo "D = $fecha (SEMILLA_FECHA, la misma para los tres servicios)"
 
   paso 'Keycloak: usuarios de prueba'

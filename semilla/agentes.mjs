@@ -19,8 +19,11 @@
 //      semilla/eventos-ia.mjs; con Obras, Materiales, Finanzas e IA levantados). SEMILLA_FECHA fija la fecha D como en
 //      la semilla. Sin --entorno, desarrollo (infra/.env con SEMILLA_PERMITIDA=si); con --entorno, la «producción
 //      local» o la nube con SEMILLA_DEMO=si (602: solo agrega entradas del diario, nunca vacía; entorno-script.mjs).
+//      Con SEMILLA_HISTORIA=si (603) registra además el diario de lunes a sábado de las seis obras desde su inicio
+//      (semilla/historia/diario.mjs).
 // Node 24, sin dependencias.
 import { entornoDelScript } from './entorno-script.mjs';
+import { diarioHistorico } from './historia/diario.mjs';
 
 const { valor, token: tokenDe, descripcion } = await entornoDelScript('agentes');
 
@@ -105,6 +108,35 @@ async function cargarDiario(d, tokenMaestro) {
   return problemas;
 }
 
+/** 603: el diario de la historia de demostración (sin los días de las entradas fijas de arriba). */
+async function cargarDiarioHistorico(d, primerToken) {
+  const ocupados = new Set(DIARIO.map((e) => `${e.obra}|${restarDias(d, e.diasAntes)}`));
+  const entradas = diarioHistorico(d, ocupados);
+  const cuenta = { registradas: 0, estaban: 0, problemas: 0 };
+  let tokenMaestro = primerToken;
+  for (const [i, e] of entradas.entries()) {
+    // Los tokens duran 5 minutos: se renueva cada 150 entradas
+    if (i > 0 && i % 150 === 0) tokenMaestro = await tokenDe('maestro1');
+    let respuesta;
+    try {
+      respuesta = await pedir(`${OBRAS}/obras/${obra(e.obra)}/diario`, tokenMaestro, {
+        method: 'POST',
+        body: JSON.stringify({ id: e.id, fecha: e.fecha, clima: e.clima, texto: e.texto }),
+      });
+    } catch (error) {
+      salir(`Obras no responde (${OBRAS}): levántalo antes. ${error.message}`);
+    }
+    if (respuesta.status === 201) cuenta.registradas++;
+    else if (respuesta.status === 200 || respuesta.status === 409) cuenta.estaban++;
+    else {
+      cuenta.problemas++;
+      if (cuenta.problemas <= 5) console.log(`ERROR    diario obra ${e.obra} ${e.fecha}: ${respuesta.status} ${(await respuesta.text()).slice(0, 200)}`);
+    }
+  }
+  console.log(`ok       diario histórico (603): ${cuenta.registradas} registradas, ${cuenta.estaban} ya estaban, ${cuenta.problemas} con error (${entradas.length} en total)`);
+  return cuenta.problemas;
+}
+
 /** Cada caso del escenario: true (está), false (falta) o null (no se pudo comprobar). */
 async function comprobar(token) {
   const casos = [];
@@ -168,7 +200,8 @@ async function main() {
     salir(`No se pudo obtener el token de maestro1 o gerente1 en Keycloak: ${error.message}`);
   }
 
-  const problemas = await cargarDiario(d, tokenMaestro);
+  let problemas = await cargarDiario(d, tokenMaestro);
+  if (valor('SEMILLA_HISTORIA', '') === 'si') problemas += await cargarDiarioHistorico(d, tokenMaestro);
 
   console.log('\nEscenario de los agentes:');
   const casos = await comprobar(tokenGerente);

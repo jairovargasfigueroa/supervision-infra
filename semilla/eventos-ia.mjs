@@ -16,6 +16,8 @@
 // Uso: node semilla/eventos-ia.mjs [--entorno nube/.env]   publica y, si ia-worker consume la cola, espera y muestra
 //      el resultado. Sin --entorno, desarrollo (infra/.env con SEMILLA_PERMITIDA=si); con --entorno, la «producción
 //      local» o la nube con SEMILLA_DEMO=si (602: solo agrega eventos, nunca vacía; semilla/entorno-script.mjs).
+//      --todas (603): publica el MovimientoRegistrado de TODAS las salidas de las obras 1 a 6 (con la historia de
+//      demostración), en orden cronológico; id de evento fa000000-… con el número del movimiento.
 // Node 24, sin dependencias.
 import { entornoDelScript } from './entorno-script.mjs';
 
@@ -28,6 +30,8 @@ const COLA = 'ia';
 const CLAVE = 'evento.materiales.MovimientoRegistrado';
 // Mismo flujo para todos los eventos de esta carga (correlacionId del sobre)
 const CORRELACION = 'fa000000-0000-4000-8000-000000000000';
+const TODAS = process.argv.includes('--todas');
+const OBRAS_HISTORIA = [1, 2, 3, 4, 5, 6];
 
 const obra = (n) => `b0000000-0000-4000-8000-00000000000${n}`;
 const movimiento = (numero) => `f0000000-0000-4000-8000-0000000${numero}`;
@@ -150,7 +154,28 @@ async function main() {
   }
 
   const eventos = [];
-  for (const salida of SALIDAS) {
+  if (TODAS) {
+    // 603: todas las salidas de las seis obras, en orden cronológico
+    for (const n of OBRAS_HISTORIA) {
+      let movimientos;
+      try {
+        movimientos = await todasLasPaginas(`/obras/${obra(n)}/movimientos`, token);
+      } catch (error) {
+        console.log(`aviso    obra ${n}: ${error.message} (¿sin la historia de demostración?)`);
+        continue;
+      }
+      for (const mov of movimientos.filter((m) => m.tipo === 'SALIDA')) {
+        const numero = mov.id.slice(-5);
+        eventos.push({
+          salida: { numero, obra: n, caso: `obra ${n}` },
+          registradoEn: mov.registradoEn,
+          evento: armarEvento(numero, { ...mov, obraId: obra(n) }, materiales.get(mov.materialId)?.precioReferencial ?? null),
+        });
+      }
+    }
+    eventos.sort((a, b) => a.registradoEn.localeCompare(b.registradoEn));
+  }
+  for (const salida of TODAS ? [] : SALIDAS) {
     const movimientos = await todasLasPaginas(`/obras/${obra(salida.obra)}/movimientos`, token);
     const mov = movimientos.find((m) => m.id === movimiento(salida.numero));
     if (!mov) salir(`No está el movimiento ${salida.numero} (${movimiento(salida.numero)}) en Materiales: corre antes ./semilla/semilla.ps1.`);
@@ -159,9 +184,12 @@ async function main() {
     eventos.push({ salida, evento: armarEvento(salida.numero, { ...mov, obraId: obra(salida.obra) }, material?.precioReferencial ?? null) });
   }
 
+  let publicados = 0;
   for (const { salida, evento } of eventos) {
     await publicar(evento);
-    console.log(`ok       MovimientoRegistrado ${salida.numero} publicado en la cola ${COLA} (${salida.caso}; evento ${evento.id})`);
+    publicados++;
+    if (!TODAS) console.log(`ok       MovimientoRegistrado ${salida.numero} publicado en la cola ${COLA} (${salida.caso}; evento ${evento.id})`);
+    else if (publicados % 200 === 0 || publicados === eventos.length) console.log(`ok       ${publicados} de ${eventos.length} salidas publicadas en la cola ${COLA}`);
   }
 
   const cola = await rabbit(`/queues/%2F/${COLA}`);
@@ -169,8 +197,22 @@ async function main() {
     console.log(`aviso    La cola ${COLA} no tiene consumidor: los eventos se aplican cuando corra ia-worker.`);
     return;
   }
-  if (!(await esperarCola(30000))) {
-    console.log(`aviso    ia-worker no vació la cola ${COLA} en 30 s; revisa sus registros.`);
+  const espera = TODAS ? 15 * 60000 : 30000;
+  if (!(await esperarCola(espera))) {
+    console.log(`aviso    ia-worker no vació la cola ${COLA} en ${espera / 1000} s; revisa sus registros.`);
+    return;
+  }
+  if (TODAS) {
+    // Resumen por obra: consumos atípicos que detectó el modelo (403); el token dura 5 minutos, se pide otro
+    token = await tokenDe('gerente1');
+    for (const n of OBRAS_HISTORIA) {
+      try {
+        const lista = await pedirJson(`${IA}/consumos-atipicos?obraId=${obra(n)}`, token);
+        console.log(`ok       obra ${n}: ${lista.length} consumos atípicos${lista.length ? ` (${lista.map((c) => `${c.puntaje}`).join(', ')})` : ''}`);
+      } catch (error) {
+        console.log(`aviso    obra ${n}: no se pudo leer el resultado en IA: ${error.message}`);
+      }
+    }
     return;
   }
   // Resultado: consumos atípicos de las dos obras según el servicio de IA (GET /consumos-atipicos, 403)

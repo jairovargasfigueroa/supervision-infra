@@ -63,9 +63,9 @@ Para empezar de cero antes de una demostración (borra lo que se registró al pr
 
 1. **Azure:** `TRUNCATE … RESTART IDENTITY CASCADE` de todas las tablas de `obras_db` salvo `flyway_schema_history` y de `finanzas_db` salvo `migrations` (en `supervision-azure-postgres-1`, con `psql -U $POSTGRES_USER`, la lista de tablas sale de `pg_tables`); vaciar las colas con mensajes (`rabbitmqctl -q list_queues -p / name messages` y `purge_queue`) y Mailpit (`DELETE /api/v1/messages` con su usuario y clave).
 2. **Google:** `deleteMany({})` de las colecciones de `materiales_db` y, en `ia_db`, de `consulta_reporte`, `conversacion_reporte`, `receta_cache`, `limite_consulta`, `ejecucion_agente`, `sugerencia`, `prediccion` y `consumo_atipico` (en `supervision-google-mongo-1`); `reportes_db` con `postgres/vaciar-reportes.sql` (`ssh supervision-google 'docker exec -i supervision-google-postgres-reportes-1 sh -c "psql -U \$POSTGRES_USER -d reportes_db"' < postgres/vaciar-reportes.sql`).
-3. **Cargar:** `node nube/nube.mjs contextos`, `./semilla/semilla.ps1 -Entorno nube/.env` (D = hoy) y la carga inicial de reportes por SSH (paso 7 de «Primera vez»), que también recalcula el riesgo.
-4. **Escenario:** `node semilla/eventos-ia.mjs --entorno nube/.env` y `node semilla/agentes.mjs --entorno nube/.env` (debe decir «El escenario está completo»).
-5. **Revisar:** `node pruebas/humo-despliegue.mjs --entorno nube/.env` (sin `--completa`) y el tablero: 3 obras, Las Lomas en riesgo, 1 cobro vencido por Bs 290.134,80.
+3. **Cargar:** `node nube/nube.mjs contextos`, `./semilla/semilla.ps1 -Entorno nube/.env` (D = hoy; con `SEMILLA_HISTORIA=si` en `nube/.env` carga también la historia de demostración de la 603: obras 4 a 6 con meses de uso) y la carga inicial de reportes por SSH (paso 7 de «Primera vez»), que también recalcula el riesgo.
+4. **Escenario:** `node semilla/eventos-ia.mjs --entorno nube/.env --todas` (todas las salidas a la 403; unos minutos) y `node semilla/agentes.mjs --entorno nube/.env` (diario de las seis obras; debe decir «El escenario está completo»).
+5. **Revisar:** `node pruebas/humo-despliegue.mjs --entorno nube/.env` (sin `--completa`) y el tablero: 6 obras; riesgo del modelo BAJO, ALTO y MEDIO en las obras 4, 5 y 6.
 
 En el celular, después de vaciar: cerrar sesión en la app y volver a entrar, para que descargue los datos nuevos.
 

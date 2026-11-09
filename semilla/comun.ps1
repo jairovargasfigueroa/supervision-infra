@@ -101,6 +101,9 @@ function Comprobar-Entorno([switch]$ConRabbitMQ, [string]$Entorno) {
     if ($Entorno) { Write-Host "ok       entorno $RutaEnv" }
     # 601: SEMILLA_DEMO=si permite cargar (nunca vaciar) los datos de demostración fuera de desarrollo
     $script:Demo = $envInfra['SEMILLA_DEMO'] -eq 'si'
+    # 603: SEMILLA_HISTORIA=si suma la historia de demostración (obras 4 a 6) a los datos de prueba
+    $script:Historia = $envInfra['SEMILLA_HISTORIA'] -eq 'si'
+    if ($Historia) { Write-Host 'ok       SEMILLA_HISTORIA=si (con la historia de demostración, 603)' }
     if ($Demo) {
         Write-Host 'ok       SEMILLA_DEMO=si (datos de demostración: solo carga, nunca vaciado)'
     } elseif ($envInfra['SEMILLA_PERMITIDA'] -ne 'si') {
@@ -297,7 +300,7 @@ function Verificar-Usuarios {
 # 602: con -Contexto corre en otro Docker (un contexto por SSH: la máquina de la nube); vacío, el Docker local.
 function Ejecutar-En-Imagen([string]$Nombre, [string]$Archivo, [string]$Servicio, [string[]]$Variables, [string[]]$Comando, [string]$Contexto) {
     $prefijo = if ($Contexto) { @('--context', $Contexto) } else { @() }
-    $argumentos = $prefijo + (Argumentos-Compose $Archivo) + @('run', '--rm', '--no-deps', '--no-TTY', '-e', 'SEMILLA_DEMO=si', '-e', "SEMILLA_FECHA=$env:SEMILLA_FECHA")
+    $argumentos = $prefijo + (Argumentos-Compose $Archivo) + @('run', '--rm', '--no-deps', '--no-TTY', '-e', 'SEMILLA_DEMO=si', '-e', "SEMILLA_FECHA=$env:SEMILLA_FECHA", '-e', "SEMILLA_HISTORIA=$env:SEMILLA_HISTORIA")
     foreach ($variable in $Variables) { $argumentos += @('-e', $variable) }
     $argumentos += $Servicio
     if ($Comando) { $argumentos += $Comando }
@@ -311,6 +314,8 @@ function Cargar-Datos($Config, [string]$ModoObras = 'cargar') {
     $fecha = Ejecutar-Ayudante @('fecha') | ForEach-Object { Linea $_ }
     if ($LASTEXITCODE -ne 0) { Detener "$fecha" }
     $env:SEMILLA_FECHA = $fecha
+    # 603: la reciben los tres servicios (en desarrollo, por herencia; en modo demostración, con -e)
+    $env:SEMILLA_HISTORIA = if ($Historia) { 'si' } else { '' }
     Write-Host "D = $fecha (SEMILLA_FECHA, la misma para los tres servicios)"
 
     Paso 'Keycloak: usuarios de prueba'
